@@ -198,7 +198,8 @@ public sealed class ConPtySession : IAsyncDisposable
 
     public async Task WaitForIdleAsync(TimeSpan quietPeriod, TimeSpan hardTimeout, CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow + hardTimeout;
+        var start = DateTime.UtcNow;
+        var deadline = start + hardTimeout;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -210,7 +211,10 @@ public sealed class ConPtySession : IAsyncDisposable
             }
 
             var lastOutput = new DateTime(Interlocked.Read(ref _lastOutputTicks), DateTimeKind.Utc);
-            var quietFor = now - lastOutput;
+            // Measure the quiet period from this call, not from output that arrived before it: otherwise a caller
+            // that writes input and then waits returns instantly, before the process has had a chance to react.
+            var reference = lastOutput > start ? lastOutput : start;
+            var quietFor = now - reference;
             if (quietFor >= quietPeriod)
             {
                 return;

@@ -1,0 +1,44 @@
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ✨ Update available! 0.153.4 -> 0.154.0                                                                              │
+│ Run powershell -ExecutionPolicy Bypass -c '$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | │
+│ iex' to update.                                                                                                      │
+│                                                                                                                      │
+│ See full release notes:                                                                                              │
+│ https://github.com/openai/codex/releases/latest                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭───────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                    │
+│                                               │
+│ model:     gpt-6-astra low   /model to change │
+│ directory: D:\workspace\token                 │
+╰───────────────────────────────────────────────╯
+
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+
+⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.
+
+/status
+
+╭─────────────────────────────────────────────────────────────────────────────────╮
+│  >_ OpenAI Codex (v0.153.4)                                                     │
+│                                                                                 │
+│ Visit https://chatgpt.com/codex/settings/usage for up-to-date                   │
+│ information on rate limits and credits                                          │
+│                                                                                 │
+│  Model:                gpt-6-astra (reasoning low, summaries auto)              │
+│  Directory:            D:\workspace\token                                       │
+│  Permissions:          Workspace (Ask for approval)                             │
+│  Agents.md:            ~\.codex\AGENTS.md                                       │
+│  Account:              users.name@example.com (Plus)                            │
+│  Collaboration mode:   Default                                                  │
+│  Session:              00000000-0000-0000-0000-000000000000                     │
+│                                                                                 │
+│  5h limit:             [████████████████████] 100% left (resets 21:44)          │
+│  Weekly limit:         [████░░░░░░░░░░░░░░░░] 20% left (resets 21:02 on 20 Sep) │
+╰─────────────────────────────────────────────────────────────────────────────────╯
+
+
+› Ask Codex to do anything
+
+  gpt-6-astra low · D:\workspace\token
