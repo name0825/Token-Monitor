@@ -10,6 +10,7 @@ public sealed class UsagePoller : IAsyncDisposable
     private readonly object _runLock = new();
 
     private CancellationTokenSource? _runCts;
+    private CancellationTokenSource? _delayCts;
     private Task? _loopTask;
     private bool _running;
     private bool _disposed;
@@ -72,13 +73,27 @@ public sealed class UsagePoller : IAsyncDisposable
         runCts?.Dispose();
     }
 
+    public void UpdateInterval(TimeSpan interval)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        lock (_runLock)
+        {
+            _schedule.UpdateInterval(interval);
+            _delayCts?.Cancel();
+        }
+    }
+
     public async Task<UsageResult> RefreshAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeCts.Token);
         var result = await PollAsync(linkedCts.Token).ConfigureAwait(false);
-        _schedule.Next(result);
+        lock (_runLock)
+        {
+            _schedule.Next(result);
+        }
         return result;
     }
 
@@ -89,9 +104,32 @@ public sealed class UsagePoller : IAsyncDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 var result = await PollAsync(cancellationToken).ConfigureAwait(false);
-                var delay = _schedule.Next(result);
 
-                await Task.Delay(delay, _timeProvider, cancellationToken).ConfigureAwait(false);
+                using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                TimeSpan delay;
+                lock (_runLock)
+                {
+                    delay = _schedule.Next(result);
+                    _delayCts = delayCts;
+                }
+
+                try
+                {
+                    await Task.Delay(delay, _timeProvider, delayCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                }
+                finally
+                {
+                    lock (_runLock)
+                    {
+                        if (ReferenceEquals(_delayCts, delayCts))
+                        {
+                            _delayCts = null;
+                        }
+                    }
+                }
             }
         }
         catch (OperationCanceledException)

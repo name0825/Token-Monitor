@@ -41,7 +41,11 @@ public partial class App : Application
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
         string sessionsDirectory = CodexLogProvider.ResolveDefaultSessionsDirectory();
-        PollingOptions options = new();
+        PollingOptions options = new()
+        {
+            Interval = TimeSpan.FromSeconds(_settings.PollingIntervalSeconds),
+            MinimumInterval = TimeSpan.FromSeconds(3),
+        };
 
         _claudePoller = new UsagePoller(
             new FallbackUsageProvider(
@@ -238,6 +242,8 @@ public partial class App : Application
             }
         }));
 
+        menu.Items.Add(CreateIntervalMenu());
+
         MenuItem autoStart = new()
         {
             Header = "Windows 시작 시 실행",
@@ -307,6 +313,64 @@ public partial class App : Application
         ico.Position = 0;
 
         return new System.Drawing.Icon(ico);
+    }
+
+    private static readonly (string Label, int Seconds)[] PollingIntervalOptions =
+    [
+        ("3초", 3),
+        ("5초", 5),
+        ("10초", 10),
+        ("15초", 15),
+        ("30초", 30),
+        ("1분", 60),
+        ("3분", 180),
+        ("5분", 300),
+        ("10분", 600),
+        ("15분", 900),
+        ("30분", 1800),
+    ];
+
+    private const int PollingIntervalSecondsOptionsCount = 5;
+
+    private MenuItem CreateIntervalMenu()
+    {
+        MenuItem intervalMenu = new() { Header = "업데이트 주기" };
+        List<MenuItem> items = new();
+
+        for (int i = 0; i < PollingIntervalOptions.Length; i++)
+        {
+            if (i == PollingIntervalSecondsOptionsCount)
+            {
+                intervalMenu.Items.Add(new Separator());
+            }
+
+            var (label, seconds) = PollingIntervalOptions[i];
+            MenuItem item = new()
+            {
+                Header = label,
+                IsCheckable = true,
+                IsChecked = _settings.PollingIntervalSeconds == seconds,
+            };
+
+            item.Click += (_, _) =>
+            {
+                _settings = _settings with { PollingIntervalSeconds = seconds };
+                foreach (MenuItem other in items)
+                {
+                    other.IsChecked = ReferenceEquals(other, item);
+                }
+
+                TimeSpan interval = TimeSpan.FromSeconds(seconds);
+                _claudePoller?.UpdateInterval(interval);
+                _codexPoller?.UpdateInterval(interval);
+                _settingsStore.Save(_settings);
+            };
+
+            items.Add(item);
+            intervalMenu.Items.Add(item);
+        }
+
+        return intervalMenu;
     }
 
     private MenuItem CreateToggle(string header, bool isChecked, Action<bool> apply)

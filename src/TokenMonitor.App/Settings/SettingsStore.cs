@@ -7,6 +7,8 @@ public sealed class SettingsStore
 {
     private const double MinimumOpacity = 0.2;
     private const double MaximumOpacity = 1.0;
+    private const int DefaultPollingIntervalSeconds = 180;
+    private static readonly int[] AllowedPollingIntervalsSeconds = [3, 5, 10, 15, 30, 60, 180, 300, 600, 900, 1800];
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -42,7 +44,11 @@ public sealed class SettingsStore
                 return new OverlaySettings();
             }
 
-            return settings with { Opacity = ClampOpacity(settings.Opacity) };
+            return settings with
+            {
+                Opacity = ClampOpacity(settings.Opacity),
+                PollingIntervalSeconds = ValidatePollingInterval(settings.PollingIntervalSeconds),
+            };
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or NotSupportedException or ArgumentException)
         {
@@ -71,4 +77,7 @@ public sealed class SettingsStore
 
     private static double ClampOpacity(double value) =>
         double.IsNaN(value) ? MaximumOpacity : Math.Clamp(value, MinimumOpacity, MaximumOpacity);
+
+    private static int ValidatePollingInterval(int seconds) =>
+        Array.IndexOf(AllowedPollingIntervalsSeconds, seconds) >= 0 ? seconds : DefaultPollingIntervalSeconds;
 }

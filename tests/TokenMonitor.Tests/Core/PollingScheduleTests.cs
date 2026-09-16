@@ -86,6 +86,55 @@ public class PollingScheduleTests
     }
 
     [Fact]
+    public void EffectiveInterval_DoesNotClamp_WhenIntervalAtOrAboveMinimum()
+    {
+        var options = new PollingOptions { Interval = TimeSpan.FromSeconds(3), MinimumInterval = TimeSpan.FromSeconds(3) };
+        var schedule = new PollingSchedule(options);
+
+        Assert.Equal(TimeSpan.FromSeconds(3), schedule.EffectiveInterval);
+    }
+
+    [Fact]
+    public void UpdateInterval_ChangesEffectiveInterval_ForSubsequentDelay()
+    {
+        var options = new PollingOptions { Interval = TimeSpan.FromMinutes(3), MinimumInterval = TimeSpan.FromSeconds(60) };
+        var schedule = new PollingSchedule(options);
+
+        schedule.UpdateInterval(TimeSpan.FromMinutes(10));
+        var delay = schedule.Next(UsageResult.Success([]));
+
+        Assert.Equal(TimeSpan.FromMinutes(10), delay);
+    }
+
+    [Fact]
+    public void UpdateInterval_DoesNotResetActiveBackoff()
+    {
+        var options = new PollingOptions
+        {
+            Interval = TimeSpan.FromSeconds(1),
+            MinimumInterval = TimeSpan.FromSeconds(1),
+            InitialBackoff = TimeSpan.FromSeconds(10),
+            MaximumBackoff = TimeSpan.FromSeconds(30),
+        };
+        var schedule = new PollingSchedule(options);
+        var rateLimited = UsageResult.Failure(UsageFailureKind.RateLimited, "429");
+
+        schedule.Next(rateLimited);
+        schedule.UpdateInterval(TimeSpan.FromSeconds(5));
+        var second = schedule.Next(rateLimited);
+
+        Assert.Equal(TimeSpan.FromSeconds(20), second);
+    }
+
+    [Fact]
+    public void UpdateInterval_Throws_WhenNotPositive()
+    {
+        var schedule = new PollingSchedule(new PollingOptions());
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => schedule.UpdateInterval(TimeSpan.Zero));
+    }
+
+    [Fact]
     public void Constructor_Throws_WhenMaximumBackoffLessThanInitialBackoff()
     {
         var options = new PollingOptions { InitialBackoff = TimeSpan.FromMinutes(5), MaximumBackoff = TimeSpan.FromMinutes(1) };

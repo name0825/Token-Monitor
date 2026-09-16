@@ -66,6 +66,49 @@ public class SettingsStoreTests
         Assert.Equal(expectedOpacity, settings.Opacity);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(7)]
+    [InlineData(1000)]
+    public void Load_FallsBackPollingInterval_WhenInvalid(int storedSeconds)
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, $"{{\"pollingIntervalSeconds\":{storedSeconds}}}");
+        var store = new SettingsStore(path);
+
+        var settings = store.Load();
+
+        Assert.Equal(180, settings.PollingIntervalSeconds);
+    }
+
+    [Fact]
+    public void Load_KeepsValidPollingInterval()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, "{\"pollingIntervalSeconds\":900}");
+        var store = new SettingsStore(path);
+
+        var settings = store.Load();
+
+        Assert.Equal(900, settings.PollingIntervalSeconds);
+    }
+
+    [Fact]
+    public void Load_KeepsValidPollingInterval_AtThreeSeconds()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, "{\"pollingIntervalSeconds\":3}");
+        var store = new SettingsStore(path);
+
+        var settings = store.Load();
+
+        Assert.Equal(3, settings.PollingIntervalSeconds);
+    }
+
     [Fact]
     public void Save_DoesNotLeaveTemporaryFile()
     {

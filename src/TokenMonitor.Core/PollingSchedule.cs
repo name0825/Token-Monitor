@@ -3,6 +3,7 @@ namespace TokenMonitor.Core;
 public sealed class PollingSchedule
 {
     private readonly PollingOptions _options;
+    private TimeSpan _interval;
     private TimeSpan? _currentBackoff;
 
     public PollingSchedule(PollingOptions options)
@@ -11,12 +12,23 @@ public sealed class PollingSchedule
         options.Validate();
 
         _options = options;
+        _interval = options.Interval;
         CurrentDelay = EffectiveInterval;
     }
 
-    public TimeSpan EffectiveInterval => TimeSpanMax(_options.Interval, _options.MinimumInterval);
+    public TimeSpan EffectiveInterval => TimeSpanMax(_interval, _options.MinimumInterval);
 
     public TimeSpan CurrentDelay { get; private set; }
+
+    public void UpdateInterval(TimeSpan interval)
+    {
+        if (interval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(interval), interval, "Interval must be positive.");
+        }
+
+        _interval = interval;
+    }
 
     public TimeSpan Next(UsageResult result)
     {

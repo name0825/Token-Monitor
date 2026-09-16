@@ -15,4 +15,6 @@ public sealed record OverlaySettings
     public bool ShowClaude { get; init; } = true;
 
     public bool ShowCodex { get; init; } = true;
+
+    public int PollingIntervalSeconds { get; init; } = 180;
 }

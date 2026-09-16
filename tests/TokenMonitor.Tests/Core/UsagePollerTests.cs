@@ -140,6 +140,32 @@ public class UsagePollerTests
     }
 
     [Fact]
+    public async Task UpdateInterval_WakesPendingDelay_AndAppliesNewInterval()
+    {
+        var callCount = 0;
+        var provider = new FakeUsageProvider(Tool.Claude, ct =>
+        {
+            Interlocked.Increment(ref callCount);
+            return Task.FromResult(SuccessResult());
+        });
+        await using var poller = new UsagePoller(provider, LongInterval());
+
+        var firstPoll = new TaskCompletionSource<UsageResult>();
+        poller.Updated += (_, result) => firstPoll.TrySetResult(result);
+
+        poller.Start();
+        await firstPoll.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var secondPoll = new TaskCompletionSource<UsageResult>();
+        poller.Updated += (_, result) => secondPoll.TrySetResult(result);
+
+        poller.UpdateInterval(TimeSpan.FromMilliseconds(50));
+        await secondPoll.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(2, Volatile.Read(ref callCount));
+    }
+
+    [Fact]
     public void Stop_IsIdempotent()
     {
         var provider = new FakeUsageProvider(Tool.Claude, ct => Task.FromResult(SuccessResult()));
