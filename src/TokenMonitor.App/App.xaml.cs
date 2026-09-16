@@ -51,7 +51,9 @@ public partial class App : Application
         _codexPoller = new UsagePoller(
             new FallbackUsageProvider(
                 new CodexLogProvider(sessionsDirectory),
-                new CliScrapeProvider(Tool.Codex)),
+                new CliScrapeProvider(Tool.Codex),
+                TimeSpan.FromMinutes(10),
+                TimeProvider.System),
             options);
 
         _claudePoller.Updated += OnPollerUpdated;

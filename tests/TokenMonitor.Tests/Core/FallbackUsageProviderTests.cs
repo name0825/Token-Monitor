@@ -3,6 +3,81 @@ using TokenMonitor.Tests.TestSupport;
 
 namespace TokenMonitor.Tests.Core;
 
+public class FallbackUsageProviderStalenessTests
+{
+    private static UsageSnapshot Snapshot(Tool tool, UsageOrigin origin, DateTimeOffset observedAt) =>
+        new(tool, UsageWindow.FiveHour, 10, null, observedAt, origin);
+
+    [Fact]
+    public async Task GetUsageAsync_ReturnsPrimary_WhenPrimaryFresh()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FakeTimeProvider(now);
+        var primary = new FakeUsageProvider(Tool.Codex, ct => Task.FromResult(UsageResult.Success([Snapshot(Tool.Codex, UsageOrigin.Log, now - TimeSpan.FromMinutes(1))])));
+        var fallback = new FakeUsageProvider(Tool.Codex, ct => throw new InvalidOperationException("fallback should not be called"));
+        var sut = new FallbackUsageProvider(primary, fallback, TimeSpan.FromMinutes(10), timeProvider);
+
+        var result = await sut.GetUsageAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(UsageOrigin.Log, result.Snapshots![0].Origin);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_ReturnsFallback_WhenPrimaryStaleAndFallbackNewer()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FakeTimeProvider(now);
+        var primary = new FakeUsageProvider(Tool.Codex, ct => Task.FromResult(UsageResult.Success([Snapshot(Tool.Codex, UsageOrigin.Log, now - TimeSpan.FromMinutes(20))])));
+        var fallback = new FakeUsageProvider(Tool.Codex, ct => Task.FromResult(UsageResult.Success([Snapshot(Tool.Codex, UsageOrigin.Cli, now - TimeSpan.FromMinutes(1))])));
+        var sut = new FallbackUsageProvider(primary, fallback, TimeSpan.FromMinutes(10), timeProvider);
+
+        var result = await sut.GetUsageAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(UsageOrigin.Cli, result.Snapshots![0].Origin);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_ReturnsPrimary_WhenPrimaryStaleAndFallbackFails()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FakeTimeProvider(now);
+        var primary = new FakeUsageProvider(Tool.Codex, ct => Task.FromResult(UsageResult.Success([Snapshot(Tool.Codex, UsageOrigin.Log, now - TimeSpan.FromMinutes(20))])));
+        var fallback = new FakeUsageProvider(Tool.Codex, ct => Task.FromResult(UsageResult.Failure(UsageFailureKind.RateLimited, "throttled")));
+        var sut = new FallbackUsageProvider(primary, fallback, TimeSpan.FromMinutes(10), timeProvider);
+
+        var result = await sut.GetUsageAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(UsageOrigin.Log, result.Snapshots![0].Origin);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_ReturnsPrimary_WhenPrimaryStaleAndFallbackOlder()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FakeTimeProvider(now);
+        var primary = new FakeUsageProvider(Tool.Codex, ct => Task.FromResult(UsageResult.Success([Snapshot(Tool.Codex, UsageOrigin.Log, now - TimeSpan.FromMinutes(20))])));
+        var fallback = new FakeUsageProvider(Tool.Codex, ct => Task.FromResult(UsageResult.Success([Snapshot(Tool.Codex, UsageOrigin.Cli, now - TimeSpan.FromMinutes(25))])));
+        var sut = new FallbackUsageProvider(primary, fallback, TimeSpan.FromMinutes(10), timeProvider);
+
+        var result = await sut.GetUsageAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(UsageOrigin.Log, result.Snapshots![0].Origin);
+    }
+
+    [Fact]
+    public void Constructor_Throws_WhenMaxPrimaryAgeNotPositive()
+    {
+        var primary = new FakeUsageProvider(Tool.Codex, ct => Task.FromResult(UsageResult.Success([])));
+        var fallback = new FakeUsageProvider(Tool.Codex, ct => Task.FromResult(UsageResult.Success([])));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new FallbackUsageProvider(primary, fallback, TimeSpan.Zero, new FakeTimeProvider(DateTimeOffset.UtcNow)));
+    }
+}
+
 public class FallbackUsageProviderTests
 {
     private static UsageSnapshot Snapshot(Tool tool, UsageOrigin origin) =>
