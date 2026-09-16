@@ -132,8 +132,6 @@ public sealed class ToolUsageViewModel : INotifyPropertyChanged
             HasError = false;
             ErrorText = string.Empty;
 
-            DateTimeOffset? latestObserved = null;
-
             foreach (UsageSnapshot snapshot in snapshots)
             {
                 if (snapshot.Tool != _tool)
@@ -143,18 +141,36 @@ public sealed class ToolUsageViewModel : INotifyPropertyChanged
 
                 if (snapshot.Window == UsageWindow.FiveHour)
                 {
-                    _fiveHour = snapshot;
+                    if (_fiveHour is null || snapshot.ObservedAt >= _fiveHour.ObservedAt)
+                    {
+                        _fiveHour = snapshot;
+                    }
                 }
                 else
                 {
-                    _weekly = snapshot;
+                    if (_weekly is null || snapshot.ObservedAt >= _weekly.ObservedAt)
+                    {
+                        _weekly = snapshot;
+                    }
                 }
-
-                _origin = snapshot.Origin;
-                latestObserved = latestObserved is { } existing && existing > snapshot.ObservedAt ? existing : snapshot.ObservedAt;
             }
 
-            _observedAt = latestObserved;
+            UsageSnapshot? latest = null;
+            if (_fiveHour is { } fiveHour && (latest is null || fiveHour.ObservedAt > latest.ObservedAt))
+            {
+                latest = fiveHour;
+            }
+
+            if (_weekly is { } weekly && (latest is null || weekly.ObservedAt > latest.ObservedAt))
+            {
+                latest = weekly;
+            }
+
+            if (latest is { } newest)
+            {
+                _origin = newest.Origin;
+                _observedAt = newest.ObservedAt;
+            }
         }
         else
         {
