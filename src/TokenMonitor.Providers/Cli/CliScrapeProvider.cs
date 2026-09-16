@@ -112,6 +112,7 @@ public sealed class CliScrapeProvider : IUsageProvider
             }
 
             await session.WriteAsync(usageCommand, timeoutCts.Token).ConfigureAwait(false);
+            await session.WaitForIdleAsync(QuietPeriod, HardTimeout, timeoutCts.Token).ConfigureAwait(false);
             await session.WriteAsync("\r", timeoutCts.Token).ConfigureAwait(false);
             await session.WaitForIdleAsync(QuietPeriod, HardTimeout, timeoutCts.Token).ConfigureAwait(false);
 
