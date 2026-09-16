@@ -22,48 +22,48 @@
         <ItemsControl ItemsSource="{Binding Tools}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="{x:Type vm:ToolUsageViewModel}">
-                    <Grid Margin="0,2" Visibility="{Binding IsVisible, Converter={StaticResource BoolToVisibility}}">
+                    <Grid Margin="0,3" Visibility="{Binding IsVisible, Converter={StaticResource BoolToVisibility}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="54" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="36" />
-                            <ColumnDefinition Width="54" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="30" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="36" />
                             <ColumnDefinition Width="54" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="{Binding DisplayName}" Foreground="#FFEEEEEE"
+                        <TextBlock Grid.Column="0" Grid.Row="0" Text="{Binding DisplayName}" Foreground="#FFEEEEEE"
                                    FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
 
-                        <TextBlock Grid.Column="1" Text="5h" Foreground="#FF8A8A8A" FontSize="11"
+                        <TextBlock Grid.Column="1" Grid.Row="0" Text="5h" Foreground="#FF8A8A8A" FontSize="11"
                                    VerticalAlignment="Center" Margin="6,0,4,0" />
-                        <Border Grid.Column="2" Width="64" Height="5" CornerRadius="2.5" Background="#33FFFFFF"
+                        <Border Grid.Column="2" Grid.Row="0" Width="64" Height="5" CornerRadius="2.5" Background="#33FFFFFF"
                                 VerticalAlignment="Center">
                             <Rectangle Width="{Binding FiveHourBarWidth}" Fill="{Binding FiveHourBrush}"
                                        RadiusX="2.5" RadiusY="2.5" HorizontalAlignment="Left" />
                         </Border>
-                        <TextBlock Grid.Column="3" Text="{Binding FiveHourText}" Foreground="#FFEEEEEE" FontSize="11"
+                        <TextBlock Grid.Column="3" Grid.Row="0" Text="{Binding FiveHourText}" Foreground="#FFEEEEEE" FontSize="11"
                                    VerticalAlignment="Center" TextAlignment="Right" Margin="6,0,0,0" />
-                        <TextBlock Grid.Column="4" Text="{Binding FiveHourReset}" Foreground="#FFB0B0B0" FontSize="11"
+                        <TextBlock Grid.Column="4" Grid.Row="0" Text="{Binding FiveHourReset}" Foreground="#FFB0B0B0" FontSize="11"
                                    VerticalAlignment="Center" TextAlignment="Right" Margin="4,0,0,0" />
 
-                        <TextBlock Grid.Column="5" Text="주간" Foreground="#FF8A8A8A" FontSize="11"
-                                   VerticalAlignment="Center" Margin="12,0,4,0" />
-                        <Border Grid.Column="6" Width="64" Height="5" CornerRadius="2.5" Background="#33FFFFFF"
+                        <TextBlock Grid.Column="1" Grid.Row="1" Text="주간" Foreground="#FF8A8A8A" FontSize="11"
+                                   VerticalAlignment="Center" Margin="6,0,4,0" />
+                        <Border Grid.Column="2" Grid.Row="1" Width="64" Height="5" CornerRadius="2.5" Background="#33FFFFFF"
                                 VerticalAlignment="Center">
                             <Rectangle Width="{Binding WeeklyBarWidth}" Fill="{Binding WeeklyBrush}"
                                        RadiusX="2.5" RadiusY="2.5" HorizontalAlignment="Left" />
                         </Border>
-                        <TextBlock Grid.Column="7" Text="{Binding WeeklyText}" Foreground="#FFEEEEEE" FontSize="11"
+                        <TextBlock Grid.Column="3" Grid.Row="1" Text="{Binding WeeklyText}" Foreground="#FFEEEEEE" FontSize="11"
                                    VerticalAlignment="Center" TextAlignment="Right" Margin="6,0,0,0" />
-                        <TextBlock Grid.Column="8" Text="{Binding WeeklyReset}" Foreground="#FFB0B0B0" FontSize="11"
+                        <TextBlock Grid.Column="4" Grid.Row="1" Text="{Binding WeeklyReset}" Foreground="#FFB0B0B0" FontSize="11"
                                    VerticalAlignment="Center" TextAlignment="Right" Margin="4,0,0,0" />
 
-                        <StackPanel Grid.Column="9" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                        <StackPanel Grid.Column="5" Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
                             <TextBlock Text="{Binding ErrorText}" Foreground="#FFE57373" FontSize="11"
                                        Margin="0,0,6,0"
                                        Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
