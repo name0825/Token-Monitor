@@ -10,6 +10,7 @@ using TokenMonitor.App.Settings;
 using TokenMonitor.App.ViewModels;
 using TokenMonitor.Core;
 using TokenMonitor.Providers.Claude;
+using TokenMonitor.Providers.Cli;
 using TokenMonitor.Providers.Codex;
 
 namespace TokenMonitor.App;
@@ -43,9 +44,15 @@ public partial class App : Application
         PollingOptions options = new();
 
         _claudePoller = new UsagePoller(
-            new ClaudeOAuthProvider(_httpClient, ClaudeOAuthProvider.ResolveDefaultCredentialsPath(), TimeProvider.System),
+            new FallbackUsageProvider(
+                new ClaudeOAuthProvider(_httpClient, ClaudeOAuthProvider.ResolveDefaultCredentialsPath(), TimeProvider.System),
+                new CliScrapeProvider(Tool.Claude)),
             options);
-        _codexPoller = new UsagePoller(new CodexLogProvider(sessionsDirectory), options);
+        _codexPoller = new UsagePoller(
+            new FallbackUsageProvider(
+                new CodexLogProvider(sessionsDirectory),
+                new CliScrapeProvider(Tool.Codex)),
+            options);
 
         _claudePoller.Updated += OnPollerUpdated;
         _codexPoller.Updated += OnPollerUpdated;
