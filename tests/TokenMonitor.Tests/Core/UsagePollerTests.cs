@@ -81,4 +81,78 @@ public class UsagePollerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(UsageFailureKind.Unavailable, result.FailureKind);
     }
+
+    private static PollingOptions ShortInterval() => new()
+    {
+        Interval = TimeSpan.FromMilliseconds(50),
+        MinimumInterval = TimeSpan.FromMilliseconds(50),
+    };
+
+    [Fact]
+    public async Task Stop_PreventsFurtherPolls_AfterTimeAdvances()
+    {
+        var callCount = 0;
+        var provider = new FakeUsageProvider(Tool.Claude, ct =>
+        {
+            Interlocked.Increment(ref callCount);
+            return Task.FromResult(SuccessResult());
+        });
+        await using var poller = new UsagePoller(provider, ShortInterval());
+
+        var firstPoll = new TaskCompletionSource<UsageResult>();
+        poller.Updated += (_, result) => firstPoll.TrySetResult(result);
+
+        poller.Start();
+        await firstPoll.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        poller.Stop();
+
+        var countAfterStop = Volatile.Read(ref callCount);
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+
+        Assert.Equal(countAfterStop, Volatile.Read(ref callCount));
+    }
+
+    [Fact]
+    public async Task Start_AfterStop_PollsAgain()
+    {
+        var callCount = 0;
+        var provider = new FakeUsageProvider(Tool.Claude, ct =>
+        {
+            Interlocked.Increment(ref callCount);
+            return Task.FromResult(SuccessResult());
+        });
+        await using var poller = new UsagePoller(provider, LongInterval());
+
+        var firstPoll = new TaskCompletionSource<UsageResult>();
+        poller.Updated += (_, result) => firstPoll.TrySetResult(result);
+
+        poller.Start();
+        await firstPoll.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        poller.Stop();
+
+        var secondPoll = new TaskCompletionSource<UsageResult>();
+        poller.Updated += (_, result) => secondPoll.TrySetResult(result);
+
+        poller.Start();
+        await secondPoll.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(2, Volatile.Read(ref callCount));
+    }
+
+    [Fact]
+    public void Stop_IsIdempotent()
+    {
+        var provider = new FakeUsageProvider(Tool.Claude, ct => Task.FromResult(SuccessResult()));
+        var poller = new UsagePoller(provider, LongInterval());
+
+        var exception = Record.Exception(() =>
+        {
+            poller.Stop();
+            poller.Start();
+            poller.Stop();
+            poller.Stop();
+        });
+
+        Assert.Null(exception);
+    }
 }

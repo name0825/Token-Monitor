@@ -6,10 +6,12 @@ public sealed class UsagePoller : IAsyncDisposable
     private readonly TimeProvider _timeProvider;
     private readonly PollingSchedule _schedule;
     private readonly SemaphoreSlim _pollLock = new(1, 1);
-    private readonly CancellationTokenSource _cts = new();
+    private readonly CancellationTokenSource _disposeCts = new();
+    private readonly object _runLock = new();
 
+    private CancellationTokenSource? _runCts;
     private Task? _loopTask;
-    private int _started;
+    private bool _running;
     private bool _disposed;
 
     public UsagePoller(IUsageProvider provider, PollingOptions options, TimeProvider timeProvider)
@@ -38,19 +40,43 @@ public sealed class UsagePoller : IAsyncDisposable
 
     public void Start()
     {
-        if (Interlocked.CompareExchange(ref _started, 1, 0) != 0)
+        lock (_runLock)
         {
-            return;
+            if (_running)
+            {
+                return;
+            }
+
+            _running = true;
+            _runCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
+            _loopTask = RunLoopAsync(_runCts.Token);
+        }
+    }
+
+    public void Stop()
+    {
+        CancellationTokenSource? runCts;
+        lock (_runLock)
+        {
+            if (!_running)
+            {
+                return;
+            }
+
+            _running = false;
+            runCts = _runCts;
+            _runCts = null;
         }
 
-        _loopTask = RunLoopAsync(_cts.Token);
+        runCts?.Cancel();
+        runCts?.Dispose();
     }
 
     public async Task<UsageResult> RefreshAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cts.Token);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeCts.Token);
         var result = await PollAsync(linkedCts.Token).ConfigureAwait(false);
         _schedule.Next(result);
         return result;
@@ -126,7 +152,8 @@ public sealed class UsagePoller : IAsyncDisposable
 
         _disposed = true;
 
-        _cts.Cancel();
+        Stop();
+        _disposeCts.Cancel();
 
         if (_loopTask is not null)
         {
@@ -141,7 +168,7 @@ public sealed class UsagePoller : IAsyncDisposable
 
         await _pollLock.WaitAsync().ConfigureAwait(false);
 
-        _cts.Dispose();
+        _disposeCts.Dispose();
         _pollLock.Dispose();
     }
 }

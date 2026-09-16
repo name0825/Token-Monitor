@@ -76,8 +76,15 @@ public partial class App : Application
         _tickTimer.Tick += (_, _) => _viewModel.Tick(DateTimeOffset.Now);
         _tickTimer.Start();
 
-        _claudePoller.Start();
-        _codexPoller.Start();
+        if (_settings.ShowClaude)
+        {
+            _claudePoller.Start();
+        }
+
+        if (_settings.ShowCodex)
+        {
+            _codexPoller.Start();
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -150,7 +157,7 @@ public partial class App : Application
 
     private void OnCodexSessionsChanged(object? sender, EventArgs e)
     {
-        if (_codexPoller is null || Interlocked.CompareExchange(ref _codexRefreshing, 1, 0) != 0)
+        if (!_settings.ShowCodex || _codexPoller is null || Interlocked.CompareExchange(ref _codexRefreshing, 1, 0) != 0)
         {
             return;
         }
@@ -207,12 +214,28 @@ public partial class App : Application
         {
             _settings = _settings with { ShowClaude = value };
             _window?.ApplySettings(_settings);
+            if (value)
+            {
+                _claudePoller?.Start();
+            }
+            else
+            {
+                _claudePoller?.Stop();
+            }
         }));
 
         menu.Items.Add(CreateToggle("Codex 표시", _settings.ShowCodex, value =>
         {
             _settings = _settings with { ShowCodex = value };
             _window?.ApplySettings(_settings);
+            if (value)
+            {
+                _codexPoller?.Start();
+            }
+            else
+            {
+                _codexPoller?.Stop();
+            }
         }));
 
         MenuItem autoStart = new()
@@ -306,8 +329,15 @@ public partial class App : Application
 
     private void RefreshAll()
     {
-        _claudeRefreshTask = RefreshPollerAsync(_claudePoller);
-        OnCodexSessionsChanged(this, EventArgs.Empty);
+        if (_settings.ShowClaude)
+        {
+            _claudeRefreshTask = RefreshPollerAsync(_claudePoller);
+        }
+
+        if (_settings.ShowCodex)
+        {
+            OnCodexSessionsChanged(this, EventArgs.Empty);
+        }
     }
 
     private static async Task RefreshPollerAsync(UsagePoller? poller)
