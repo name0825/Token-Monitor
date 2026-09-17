@@ -43,6 +43,14 @@ public class ClaudeCredentialsParserTests
     }
 
     [Fact]
+    public void Parse_ReturnsNull_WhenRootIsArray()
+    {
+        var credentials = ClaudeCredentialsParser.Parse("[]");
+
+        Assert.Null(credentials);
+    }
+
+    [Fact]
     public void Parse_ReturnsNull_WhenExpiresAtIsString()
     {
         var json = """

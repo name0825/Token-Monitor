@@ -20,6 +20,11 @@ public static class ClaudeCredentialsParser
         {
             var root = document.RootElement;
 
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
             if (!root.TryGetProperty("claudeAiOauth", out var oauth) || oauth.ValueKind != JsonValueKind.Object)
             {
                 return null;

@@ -22,12 +22,22 @@ public static class ClaudeUsageParser
         {
             var root = document.RootElement;
 
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return UsageResult.Failure(UsageFailureKind.InvalidData, "Root element is not an object");
+            }
+
             if (root.TryGetProperty("limits", out var limits) && limits.ValueKind == JsonValueKind.Array)
             {
                 var snapshotsByWindow = new Dictionary<UsageWindow, UsageSnapshot>();
 
                 foreach (var limit in limits.EnumerateArray())
                 {
+                    if (limit.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
                     if (!limit.TryGetProperty("kind", out var kindElement) || kindElement.ValueKind != JsonValueKind.String)
                     {
                         continue;

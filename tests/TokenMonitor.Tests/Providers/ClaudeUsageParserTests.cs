@@ -128,6 +128,35 @@ public class ClaudeUsageParserTests
     }
 
     [Fact]
+    public void Parse_ReturnsInvalidData_WhenRootIsArray()
+    {
+        var result = ClaudeUsageParser.Parse("[]", DateTimeOffset.UtcNow);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(UsageFailureKind.InvalidData, result.FailureKind);
+    }
+
+    [Fact]
+    public void Parse_SkipsNonObjectLimit_AndUsesValidOne()
+    {
+        var json = """
+        {
+          "limits": [
+            5,
+            { "kind": "weekly_all", "percent": 28, "resets_at": null }
+          ]
+        }
+        """;
+
+        var result = ClaudeUsageParser.Parse(json, DateTimeOffset.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        var snapshot = Assert.Single(result.Snapshots!);
+        Assert.Equal(UsageWindow.Weekly, snapshot.Window);
+        Assert.Equal(28, snapshot.UsedPercent);
+    }
+
+    [Fact]
     public void Parse_KeepsLastSnapshot_WhenLimitsHasDuplicateKinds()
     {
         var json = """

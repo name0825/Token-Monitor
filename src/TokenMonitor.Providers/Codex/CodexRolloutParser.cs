@@ -32,6 +32,11 @@ public static class CodexRolloutParser
             {
                 var root = document.RootElement;
 
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
                 if (!root.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String || typeElement.GetString() != "event_msg")
                 {
                     continue;

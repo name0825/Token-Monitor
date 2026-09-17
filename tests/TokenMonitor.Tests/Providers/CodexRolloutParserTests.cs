@@ -105,6 +105,20 @@ public class CodexRolloutParserTests
     }
 
     [Fact]
+    public void ParseLatest_SkipsNonObjectLine_BetweenValidLines()
+    {
+        var firstLine = """{"timestamp":"2026-09-15T15:01:09.778Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":50.0,"window_minutes":300,"resets_at":1789500974}}}}""";
+        var nonObjectLine = "[]";
+        var secondLine = """{"timestamp":"2026-09-15T15:02:00.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":60.0,"window_minutes":300,"resets_at":1789500974}}}}""";
+
+        var result = CodexRolloutParser.ParseLatest(new[] { firstLine, nonObjectLine, secondLine });
+
+        Assert.True(result.IsSuccess);
+        var fiveHour = Assert.Single(result.Snapshots!, s => s.Window == UsageWindow.FiveHour);
+        Assert.Equal(60.0, fiveHour.UsedPercent);
+    }
+
+    [Fact]
     public void ParseLatest_EarlierValidLineWins_WhenLastQualifyingLineHasBadTimestamp()
     {
         var validLine = """{"timestamp":"2026-09-15T15:01:09.778Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":50.0,"window_minutes":300,"resets_at":1789500974}}}}""";

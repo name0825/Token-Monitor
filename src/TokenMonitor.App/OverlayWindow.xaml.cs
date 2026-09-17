@@ -105,9 +105,23 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        Rect work = SystemParameters.WorkArea;
+        Rect work = GetCurrentMonitorWorkArea();
         Left = Clamp(Left, work.Left, work.Right - ActualWidth);
         Top = Clamp(Top, work.Top, work.Bottom - ActualHeight);
+    }
+
+    private Rect GetCurrentMonitorWorkArea()
+    {
+        if (_handle != IntPtr.Zero
+            && NativeMethods.TryGetWorkAreaForWindow(_handle, out int left, out int top, out int right, out int bottom)
+            && PresentationSource.FromVisual(this)?.CompositionTarget is { } target)
+        {
+            Point topLeft = target.TransformFromDevice.Transform(new Point(left, top));
+            Point bottomRight = target.TransformFromDevice.Transform(new Point(right, bottom));
+            return new Rect(topLeft, bottomRight);
+        }
+
+        return SystemParameters.WorkArea;
     }
 
     private void OnPositionSaveTick(object? sender, EventArgs e)
