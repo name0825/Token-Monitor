@@ -65,7 +65,8 @@
 
                         <StackPanel Grid.Column="5" Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
                             <TextBlock Text="{Binding ErrorText}" Foreground="#FFE57373" FontSize="11"
-                                       Margin="0,0,6,0"
+                                       Margin="0,0,6,0" MaxWidth="160" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding ErrorText}"
                                        Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
                             <TextBlock Text="{Binding StatusText}" Foreground="#FF7A7A7A" FontSize="11" />
                         </StackPanel>

@@ -101,6 +101,7 @@ public sealed class ConPtySession : IAsyncDisposable
                 lpAttributeList = attributeList,
             };
             startupInfo.StartupInfo.cb = Marshal.SizeOf<ConPtyNativeMethods.STARTUPINFOEX>();
+            startupInfo.StartupInfo.dwFlags = ConPtyNativeMethods.STARTF_USESTDHANDLES;
 
             var commandLineBuffer = new StringBuilder(commandLine);
 

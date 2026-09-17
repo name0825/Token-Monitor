@@ -72,6 +72,33 @@ public class CliScrapeProviderTests
     }
 
     [Fact]
+    public async Task GetUsageAsync_RetriesAfterTwoMinutes_FollowingAFailure_ButNotBefore()
+    {
+        using var tempDirectory = new TempDirectory();
+        var callCount = 0;
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var provider = new CliScrapeProvider(Tool.Claude, tempDirectory.Path, (_, _) =>
+        {
+            callCount++;
+            return new FakeCliSession("Do you trust the files in this folder?\n1. Yes\n2. No", string.Empty);
+        }, timeProvider);
+
+        var first = await provider.GetUsageAsync(CancellationToken.None);
+        timeProvider.Now += TimeSpan.FromMinutes(1);
+        var second = await provider.GetUsageAsync(CancellationToken.None);
+
+        Assert.Equal(1, callCount);
+        Assert.False(first.IsSuccess);
+        Assert.Same(first, second);
+
+        timeProvider.Now += TimeSpan.FromMinutes(2);
+        var third = await provider.GetUsageAsync(CancellationToken.None);
+
+        Assert.Equal(2, callCount);
+        Assert.False(third.IsSuccess);
+    }
+
+    [Fact]
     public async Task GetUsageAsync_ReturnsUnavailableFailure_WhenSessionTimesOut()
     {
         using var tempDirectory = new TempDirectory();

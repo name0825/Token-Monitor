@@ -7,6 +7,7 @@ public delegate ICliSession CliSessionFactory(string executable, string workingD
 public sealed class CliScrapeProvider : IUsageProvider
 {
     private static readonly TimeSpan MinimumInterval = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan RetryAfterFailureInterval = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan HardTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan QuietPeriod = TimeSpan.FromMilliseconds(750);
 
@@ -40,10 +41,15 @@ public sealed class CliScrapeProvider : IUsageProvider
         try
         {
             var now = _timeProvider.GetUtcNow();
-            if (_lastRunAt is { } lastRunAt && now - lastRunAt < MinimumInterval)
+            if (_lastRunAt is { } lastRunAt && _lastResult is { } lastResult)
             {
                 // Self-imposed throttle, mirrors how the real APIs would rate-limit repeated requests.
-                return _lastResult ?? UsageResult.Failure(UsageFailureKind.RateLimited, "CLI 폴백은 최소 10분 간격으로만 실행됩니다");
+                // A failed attempt gets a shorter cooldown so transient issues (e.g. expired token, update prompt) can recover sooner.
+                var throttleInterval = lastResult.IsSuccess ? MinimumInterval : RetryAfterFailureInterval;
+                if (now - lastRunAt < throttleInterval)
+                {
+                    return lastResult;
+                }
             }
 
             UsageResult result;

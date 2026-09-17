@@ -120,6 +120,8 @@ public class FallbackUsageProviderTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(UsageFailureKind.Unauthorized, result.FailureKind);
+        Assert.Equal("expired", result.Message);
+        Assert.Equal("no cli", result.FallbackMessage);
     }
 
     [Fact]

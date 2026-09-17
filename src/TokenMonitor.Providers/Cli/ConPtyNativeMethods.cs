@@ -11,6 +11,7 @@ internal static class ConPtyNativeMethods
     internal const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
     internal const int JobObjectExtendedLimitInformation = 9;
     internal const uint INFINITE = 0xFFFFFFFF;
+    internal const int STARTF_USESTDHANDLES = 0x00000100;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct COORD

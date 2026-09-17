@@ -42,7 +42,9 @@ public sealed class FallbackUsageProvider : IUsageProvider
         if (!primaryResult.IsSuccess)
         {
             var fallbackResult = await GetResultAsync(_fallback, cancellationToken).ConfigureAwait(false);
-            return fallbackResult.IsSuccess ? fallbackResult : primaryResult;
+            return fallbackResult.IsSuccess
+                ? fallbackResult
+                : UsageResult.Failure(primaryResult.FailureKind!.Value, primaryResult.Message ?? string.Empty, fallbackResult.Message);
         }
 
         if (_maxPrimaryAge is null || IsFresh(primaryResult))

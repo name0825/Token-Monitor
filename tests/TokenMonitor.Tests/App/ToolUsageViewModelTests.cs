@@ -92,6 +92,19 @@ public class ToolUsageViewModelTests
     }
 
     [Fact]
+    public void Apply_Failure_AppendsFallbackReason_WhenBothPrimaryAndFallbackFailed()
+    {
+        var vm = new ToolUsageViewModel(Tool.Claude);
+        var now = DateTimeOffset.UtcNow;
+        var result = UsageResult.Failure(UsageFailureKind.Unauthorized, "expired", "no cli");
+
+        vm.Apply(result, now);
+
+        Assert.True(vm.HasError);
+        Assert.Equal("인증 만료 · 폴백 실패: no cli", vm.ErrorText);
+    }
+
+    [Fact]
     public void Render_ClampsToZero_WhenResetsAtAlreadyPassed()
     {
         var vm = new ToolUsageViewModel(Tool.Claude);

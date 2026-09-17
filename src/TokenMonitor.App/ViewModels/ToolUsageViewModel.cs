@@ -175,7 +175,7 @@ public sealed class ToolUsageViewModel : INotifyPropertyChanged
         else
         {
             HasError = true;
-            ErrorText = DescribeFailure(result.FailureKind);
+            ErrorText = DescribeFailure(result);
         }
 
         Render(now);
@@ -214,15 +214,22 @@ public sealed class ToolUsageViewModel : INotifyPropertyChanged
         reset = UsageFormatting.FormatRemaining(current.ResetsAt, now);
     }
 
-    private static string DescribeFailure(UsageFailureKind? kind) => kind switch
+    private static string DescribeFailure(UsageResult result)
     {
-        UsageFailureKind.NotFound => "설정 없음",
-        UsageFailureKind.NoData => "데이터 없음",
-        UsageFailureKind.Unauthorized => "인증 만료",
-        UsageFailureKind.RateLimited => "요청 제한",
-        UsageFailureKind.InvalidData => "형식 오류",
-        _ => "사용 불가",
-    };
+        string baseText = result.FailureKind switch
+        {
+            UsageFailureKind.NotFound => "설정 없음",
+            UsageFailureKind.NoData => "데이터 없음",
+            UsageFailureKind.Unauthorized => "인증 만료",
+            UsageFailureKind.RateLimited => "요청 제한",
+            UsageFailureKind.InvalidData => "형식 오류",
+            _ => "사용 불가",
+        };
+
+        return string.IsNullOrEmpty(result.FallbackMessage)
+            ? baseText
+            : $"{baseText} · 폴백 실패: {result.FallbackMessage}";
+    }
 
     private static double BarWidth(double percent) => BarTrackWidth * Math.Clamp(percent, 0, 100) / 100;
 
