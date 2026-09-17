@@ -12,7 +12,7 @@ public static class CodexStatusScreenParser
         }
 
         var zone = localZone ?? TimeZoneInfo.Local;
-        var snapshots = new List<UsageSnapshot>();
+        var snapshotsByWindow = new Dictionary<UsageWindow, UsageSnapshot>();
 
         foreach (System.Text.RegularExpressions.Match match in CliScreenPatterns.CodexLimitLine().Matches(screen))
         {
@@ -41,11 +41,11 @@ public static class CodexStatusScreenParser
             }
 
             var resetsAt = CliResetTimeResolver.ResolveNextOccurrence(observedAt, zone, hour, minute, month, day);
-            snapshots.Add(new UsageSnapshot(Tool.Codex, window, 100 - leftPercent, resetsAt, observedAt, UsageOrigin.Cli));
+            snapshotsByWindow[window] = new UsageSnapshot(Tool.Codex, window, 100 - leftPercent, resetsAt, observedAt, UsageOrigin.Cli);
         }
 
-        return snapshots.Count == 0
+        return snapshotsByWindow.Count == 0
             ? UsageResult.Failure(UsageFailureKind.InvalidData, "No usage lines found in CLI screen")
-            : UsageResult.Success(snapshots);
+            : UsageResult.Success(snapshotsByWindow.Values.ToList());
     }
 }

@@ -17,6 +17,9 @@ namespace TokenMonitor.App;
 
 public partial class App : Application
 {
+    private const string SingleInstanceMutexName = @"Local\TokenMonitor.SingleInstance";
+    private static readonly TimeSpan ExitTimeout = TimeSpan.FromSeconds(3);
+
     private readonly SettingsStore _settingsStore = new();
     private readonly OverlayViewModel _viewModel = new();
 
@@ -28,6 +31,7 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private OverlayWindow? _window;
     private DispatcherTimer? _tickTimer;
+    private Mutex? _singleInstanceMutex;
     private int _codexRefreshing;
     private Task _claudeRefreshTask = Task.CompletedTask;
     private Task _codexRefreshTask = Task.CompletedTask;
@@ -35,6 +39,18 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        Mutex singleInstanceMutex = new(true, SingleInstanceMutexName, out bool createdNew);
+        if (!createdNew)
+        {
+            singleInstanceMutex.Dispose();
+            Shutdown();
+            return;
+        }
+
+        _singleInstanceMutex = singleInstanceMutex;
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
         _settings = _settingsStore.Load();
 
@@ -93,14 +109,13 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        try
+        if (_singleInstanceMutex is null)
         {
-            Task.WhenAll(_claudeRefreshTask, _codexRefreshTask).Wait(TimeSpan.FromSeconds(2));
+            base.OnExit(e);
+            return;
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(ex);
-        }
+
+        _settingsStore.Save(_settings);
 
         _tickTimer?.Stop();
 
@@ -120,32 +135,51 @@ public partial class App : Application
             _codexPoller.Updated -= OnPollerUpdated;
         }
 
-        DisposePoller(_claudePoller);
-        DisposePoller(_codexPoller);
-
-        _trayIcon?.Dispose();
-        _httpClient?.Dispose();
-
-        _settingsStore.Save(_settings);
-
-        base.OnExit(e);
-    }
-
-    private static void DisposePoller(UsagePoller? poller)
-    {
-        if (poller is null)
-        {
-            return;
-        }
-
         try
         {
-            poller.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            Task.WhenAll(
+                DisposePollerAsync(_claudePoller),
+                DisposePollerAsync(_codexPoller),
+                _claudeRefreshTask,
+                _codexRefreshTask).Wait(ExitTimeout);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine(ex);
         }
+
+        _trayIcon?.Dispose();
+        _httpClient?.Dispose();
+
+        DispatcherUnhandledException -= OnDispatcherUnhandledException;
+
+        _singleInstanceMutex.ReleaseMutex();
+        _singleInstanceMutex.Dispose();
+        _singleInstanceMutex = null;
+
+        base.OnExit(e);
+    }
+
+    private static Task DisposePollerAsync(UsagePoller? poller)
+    {
+        if (poller is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Task.Run(async () => await poller.DisposeAsync().ConfigureAwait(false));
+    }
+
+    private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        System.Diagnostics.Debug.WriteLine(e.Exception.GetType().FullName);
+        e.Handled = true;
+    }
+
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        System.Diagnostics.Debug.WriteLine(e.Exception.GetType().FullName);
+        e.SetObserved();
     }
 
     private void OnPollerUpdated(object? sender, UsageResult result)

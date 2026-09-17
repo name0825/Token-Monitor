@@ -57,6 +57,19 @@ public class CodexStatusScreenParserTests
     }
 
     [Fact]
+    public void Parse_DuplicateFiveHourLine_KeepsLastValueOnly()
+    {
+        var screen = "5h limit:  [████] 70% left (resets 05:00)\n5h limit:  [██] 40% left (resets 05:00)";
+        var observedAt = new DateTimeOffset(2026, 9, 16, 10, 0, 0, TimeSpan.Zero);
+
+        var result = CodexStatusScreenParser.Parse(screen, observedAt, TimeZoneInfo.Utc);
+
+        Assert.True(result.IsSuccess);
+        var snapshot = Assert.Single(result.Snapshots!, s => s.Window == UsageWindow.FiveHour);
+        Assert.Equal(60, snapshot.UsedPercent);
+    }
+
+    [Fact]
     public void Parse_ReturnsInvalidData_ForGarbageInput()
     {
         var result = CodexStatusScreenParser.Parse("nothing useful here at all", DateTimeOffset.UtcNow);

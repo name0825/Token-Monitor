@@ -166,6 +166,7 @@ public sealed class ConPtySession : IAsyncDisposable
 
             if (processHandle != IntPtr.Zero)
             {
+                ConPtyNativeMethods.TerminateProcess(processHandle, 1);
                 ConPtyNativeMethods.CloseHandle(processHandle);
             }
 

@@ -2,6 +2,8 @@ namespace TokenMonitor.Core;
 
 public sealed class UsagePoller : IAsyncDisposable
 {
+    private static readonly TimeSpan DisposeTimeout = TimeSpan.FromSeconds(5);
+
     private readonly IUsageProvider _provider;
     private readonly TimeProvider _timeProvider;
     private readonly PollingSchedule _schedule;
@@ -12,6 +14,7 @@ public sealed class UsagePoller : IAsyncDisposable
     private CancellationTokenSource? _runCts;
     private CancellationTokenSource? _delayCts;
     private Task? _loopTask;
+    private long _generation;
     private bool _running;
     private bool _disposed;
 
@@ -49,8 +52,9 @@ public sealed class UsagePoller : IAsyncDisposable
             }
 
             _running = true;
+            _generation++;
             _runCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
-            _loopTask = RunLoopAsync(_runCts.Token);
+            _loopTask = RunLoopAsync(_generation, _runCts.Token);
         }
     }
 
@@ -65,6 +69,7 @@ public sealed class UsagePoller : IAsyncDisposable
             }
 
             _running = false;
+            _generation++;
             runCts = _runCts;
             _runCts = null;
         }
@@ -89,7 +94,7 @@ public sealed class UsagePoller : IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeCts.Token);
-        var result = await PollAsync(linkedCts.Token).ConfigureAwait(false);
+        var result = await PollAsync(null, linkedCts.Token).ConfigureAwait(false);
         lock (_runLock)
         {
             _schedule.Next(result);
@@ -97,13 +102,13 @@ public sealed class UsagePoller : IAsyncDisposable
         return result;
     }
 
-    private async Task RunLoopAsync(CancellationToken cancellationToken)
+    private async Task RunLoopAsync(long generation, CancellationToken cancellationToken)
     {
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var result = await PollAsync(cancellationToken).ConfigureAwait(false);
+                var result = await PollAsync(generation, cancellationToken).ConfigureAwait(false);
 
                 using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 TimeSpan delay;
@@ -137,7 +142,7 @@ public sealed class UsagePoller : IAsyncDisposable
         }
     }
 
-    private async Task<UsageResult> PollAsync(CancellationToken cancellationToken)
+    private async Task<UsageResult> PollAsync(long? generation, CancellationToken cancellationToken)
     {
         await _pollLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         if (_disposed)
@@ -164,8 +169,17 @@ public sealed class UsagePoller : IAsyncDisposable
             _pollLock.Release();
         }
 
-        Latest = result;
-        LatestAt = _timeProvider.GetUtcNow();
+        lock (_runLock)
+        {
+            if (generation is not null && generation != _generation)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+
+            Latest = result;
+            LatestAt = _timeProvider.GetUtcNow();
+        }
+
         RaiseUpdated(result);
         return result;
     }
@@ -197,15 +211,29 @@ public sealed class UsagePoller : IAsyncDisposable
         {
             try
             {
-                await _loopTask.ConfigureAwait(false);
+                await _loopTask.WaitAsync(DisposeTimeout).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
             }
+            catch (TimeoutException)
+            {
+            }
         }
 
-        await _pollLock.WaitAsync().ConfigureAwait(false);
+        if (!await _pollLock.WaitAsync(DisposeTimeout).ConfigureAwait(false))
+        {
+            _ = DisposeWhenIdleAsync();
+            return;
+        }
 
+        _disposeCts.Dispose();
+        _pollLock.Dispose();
+    }
+
+    private async Task DisposeWhenIdleAsync()
+    {
+        await _pollLock.WaitAsync().ConfigureAwait(false);
         _disposeCts.Dispose();
         _pollLock.Dispose();
     }

@@ -166,6 +166,56 @@ public class UsagePollerTests
     }
 
     [Fact]
+    public async Task StopThenStart_ResultFromStoppedRun_DoesNotUpdateLatestOrRaiseUpdated()
+    {
+        var staleResult = UsageResult.Failure(UsageFailureKind.Unavailable, "stale");
+        var freshResult = SuccessResult();
+        var staleGate = new TaskCompletionSource<UsageResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstCallStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callCount = 0;
+        var provider = new FakeUsageProvider(Tool.Claude, ct =>
+        {
+            if (Interlocked.Increment(ref callCount) == 1)
+            {
+                firstCallStarted.TrySetResult();
+                return staleGate.Task;
+            }
+
+            return Task.FromResult(freshResult);
+        });
+        await using var poller = new UsagePoller(provider, LongInterval());
+
+        var raised = new List<UsageResult>();
+        var freshRaised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        poller.Updated += (_, result) =>
+        {
+            lock (raised)
+            {
+                raised.Add(result);
+            }
+
+            if (ReferenceEquals(result, freshResult))
+            {
+                freshRaised.TrySetResult();
+            }
+        };
+
+        poller.Start();
+        await firstCallStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        poller.Stop();
+        poller.Start();
+
+        staleGate.SetResult(staleResult);
+        await freshRaised.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        lock (raised)
+        {
+            Assert.DoesNotContain(staleResult, raised);
+        }
+        Assert.Same(freshResult, poller.Latest);
+    }
+
+    [Fact]
     public void Stop_IsIdempotent()
     {
         var provider = new FakeUsageProvider(Tool.Claude, ct => Task.FromResult(SuccessResult()));
