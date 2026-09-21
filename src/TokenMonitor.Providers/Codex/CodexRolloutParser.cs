@@ -13,66 +13,92 @@ public static class CodexRolloutParser
 
         foreach (var line in lines)
         {
-            if (string.IsNullOrWhiteSpace(line))
+            ConsiderLine(line, ref latestRateLimits, ref latestTimestamp);
+        }
+
+        return BuildResult(latestRateLimits, latestTimestamp);
+    }
+
+    public static async Task<UsageResult> ParseLatestAsync(TextReader reader, CancellationToken cancellationToken)
+    {
+        JsonElement? latestRateLimits = null;
+        var latestTimestamp = default(DateTimeOffset);
+
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            ConsiderLine(line, ref latestRateLimits, ref latestTimestamp);
+        }
+
+        return BuildResult(latestRateLimits, latestTimestamp);
+    }
+
+    private static void ConsiderLine(string line, ref JsonElement? latestRateLimits, ref DateTimeOffset latestTimestamp)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(line);
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
             {
-                continue;
+                return;
             }
 
-            JsonDocument document;
-            try
+            if (!root.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String || typeElement.GetString() != "event_msg")
             {
-                document = JsonDocument.Parse(line);
-            }
-            catch (JsonException)
-            {
-                continue;
+                return;
             }
 
-            using (document)
+            if (!root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
             {
-                var root = document.RootElement;
+                return;
+            }
 
-                if (root.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
+            if (!payload.TryGetProperty("type", out var payloadTypeElement) || payloadTypeElement.ValueKind != JsonValueKind.String || payloadTypeElement.GetString() != "token_count")
+            {
+                return;
+            }
 
-                if (!root.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String || typeElement.GetString() != "event_msg")
-                {
-                    continue;
-                }
+            if (!payload.TryGetProperty("rate_limits", out var rateLimits) || rateLimits.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
 
-                if (!root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
+            if (!root.TryGetProperty("timestamp", out var timestampElement) || timestampElement.ValueKind != JsonValueKind.String)
+            {
+                return;
+            }
 
-                if (!payload.TryGetProperty("type", out var payloadTypeElement) || payloadTypeElement.ValueKind != JsonValueKind.String || payloadTypeElement.GetString() != "token_count")
-                {
-                    continue;
-                }
+            var timestampText = timestampElement.GetString();
+            if (timestampText is null || !DateTimeOffset.TryParse(timestampText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var timestamp))
+            {
+                return;
+            }
 
-                if (!payload.TryGetProperty("rate_limits", out var rateLimits) || rateLimits.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
-
-                if (!root.TryGetProperty("timestamp", out var timestampElement) || timestampElement.ValueKind != JsonValueKind.String)
-                {
-                    continue;
-                }
-
-                var timestampText = timestampElement.GetString();
-                if (timestampText is null || !DateTimeOffset.TryParse(timestampText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var timestamp))
-                {
-                    continue;
-                }
-
+            if (latestRateLimits is null || timestamp >= latestTimestamp)
+            {
                 latestTimestamp = timestamp;
                 latestRateLimits = rateLimits.Clone();
             }
         }
+    }
 
+    private static UsageResult BuildResult(JsonElement? latestRateLimits, DateTimeOffset latestTimestamp)
+    {
         if (latestRateLimits is null)
         {
             return UsageResult.Failure(UsageFailureKind.NoData, "No qualifying token_count line found");

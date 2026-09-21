@@ -6,14 +6,23 @@ namespace TokenMonitor.Tests.Providers;
 public class CodexSessionWatcherTests
 {
     [Fact]
-    public void Start_LeavesInactive_WhenDirectoryDoesNotExist()
+    public async Task Start_ActivatesAndRaisesChanged_WhenDirectoryIsCreatedLater()
     {
         using var tempDir = new TempDirectory();
-        using var watcher = new CodexSessionWatcher(Path.Combine(tempDir.Path, "missing"), TimeSpan.FromMilliseconds(50));
+        var sessionsDirectory = Path.Combine(tempDir.Path, "missing");
+        using var watcher = new CodexSessionWatcher(sessionsDirectory, TimeSpan.FromMilliseconds(50));
+        var tcs = new TaskCompletionSource();
+        watcher.Changed += (_, _) => tcs.TrySetResult();
 
         watcher.Start();
-
         Assert.False(watcher.IsActive);
+
+        Directory.CreateDirectory(sessionsDirectory);
+        File.WriteAllText(Path.Combine(sessionsDirectory, "rollout-created-before-watch.jsonl"), "{}");
+
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        Assert.Same(tcs.Task, completed);
+        Assert.True(watcher.IsActive);
     }
 
     [Fact]

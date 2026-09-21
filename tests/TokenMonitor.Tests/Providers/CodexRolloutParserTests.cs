@@ -131,4 +131,18 @@ public class CodexRolloutParserTests
         Assert.Equal(50.0, fiveHour.UsedPercent);
         Assert.Equal(DateTimeOffset.Parse("2026-09-15T15:01:09.778Z"), fiveHour.ObservedAt);
     }
+
+    [Fact]
+    public void ParseLatest_UsesNewestTimestamp_WhenLinesAreOutOfOrder()
+    {
+        var newerLine = """{"timestamp":"2026-09-15T15:02:00.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":60.0,"window_minutes":300,"resets_at":1789500974}}}}""";
+        var olderLine = """{"timestamp":"2026-09-15T15:01:00.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":50.0,"window_minutes":300,"resets_at":1789500974}}}}""";
+
+        var result = CodexRolloutParser.ParseLatest(new[] { newerLine, olderLine });
+
+        Assert.True(result.IsSuccess);
+        var fiveHour = Assert.Single(result.Snapshots!, s => s.Window == UsageWindow.FiveHour);
+        Assert.Equal(60.0, fiveHour.UsedPercent);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-15T15:02:00.000Z"), fiveHour.ObservedAt);
+    }
 }

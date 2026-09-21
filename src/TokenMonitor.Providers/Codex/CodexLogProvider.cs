@@ -1,17 +1,15 @@
-using System.Text;
 using TokenMonitor.Core;
 
 namespace TokenMonitor.Providers.Codex;
 
 public sealed class CodexLogProvider : IUsageProvider
 {
+    private static readonly TimeSpan WriteTimeSlack = TimeSpan.FromMinutes(1);
     private readonly string _sessionsDirectory;
-    private readonly int _tailBytes;
 
-    public CodexLogProvider(string sessionsDirectory, int tailBytes = 1_048_576)
+    public CodexLogProvider(string sessionsDirectory)
     {
         _sessionsDirectory = sessionsDirectory;
-        _tailBytes = tailBytes;
     }
 
     public Tool Tool => Tool.Codex;
@@ -45,18 +43,34 @@ public sealed class CodexLogProvider : IUsageProvider
             return UsageResult.Failure(UsageFailureKind.NoData, "No rollout files found");
         }
 
+        UsageResult? latestResult = null;
+        DateTimeOffset? latestObservedAt = null;
+
         foreach (var file in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var result = await TryParseFileAsync(file, cancellationToken);
-            if (result is { IsSuccess: true })
+            if (latestObservedAt is not null &&
+                GetLastWriteTimeUtcSafe(file) < latestObservedAt.Value.UtcDateTime - WriteTimeSlack)
             {
-                return result;
+                break;
+            }
+
+            var result = await TryParseFileAsync(file, cancellationToken);
+            if (result is not { IsSuccess: true, Snapshots.Count: > 0 })
+            {
+                continue;
+            }
+
+            var observedAt = result.Snapshots.Max(snapshot => snapshot.ObservedAt);
+            if (latestObservedAt is null || observedAt > latestObservedAt.Value)
+            {
+                latestResult = result;
+                latestObservedAt = observedAt;
             }
         }
 
-        return UsageResult.Failure(UsageFailureKind.NoData, "No qualifying rate limit data found in rollout files");
+        return latestResult ?? UsageResult.Failure(UsageFailureKind.NoData, "No qualifying rate limit data found in rollout files");
     }
 
     private async Task<UsageResult?> TryParseFileAsync(string path, CancellationToken cancellationToken)
@@ -64,30 +78,8 @@ public sealed class CodexLogProvider : IUsageProvider
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            var length = stream.Length;
-
-            if (length > _tailBytes)
-            {
-                stream.Seek(-_tailBytes, SeekOrigin.End);
-                var buffer = new byte[_tailBytes];
-                await stream.ReadExactlyAsync(buffer, cancellationToken);
-                var tailText = Encoding.UTF8.GetString(buffer);
-                var newlineIndex = tailText.IndexOf('\n');
-                var trimmed = newlineIndex >= 0 ? tailText[(newlineIndex + 1)..] : string.Empty;
-
-                var tailResult = CodexRolloutParser.ParseLatest(trimmed.Split('\n'));
-                if (tailResult.IsSuccess)
-                {
-                    return tailResult;
-                }
-
-                stream.Seek(0, SeekOrigin.Begin);
-                var fullText = await ReadAllTextAsync(stream, cancellationToken);
-                return CodexRolloutParser.ParseLatest(fullText.Split('\n'));
-            }
-
-            var text = await ReadAllTextAsync(stream, cancellationToken);
-            return CodexRolloutParser.ParseLatest(text.Split('\n'));
+            using var reader = new StreamReader(stream);
+            return await CodexRolloutParser.ParseLatestAsync(reader, cancellationToken);
         }
         catch (IOException)
         {
@@ -97,12 +89,6 @@ public sealed class CodexLogProvider : IUsageProvider
         {
             return null;
         }
-    }
-
-    private static async Task<string> ReadAllTextAsync(FileStream stream, CancellationToken cancellationToken)
-    {
-        using var reader = new StreamReader(stream, leaveOpen: true);
-        return await reader.ReadToEndAsync(cancellationToken);
     }
 
     private static DateTime GetLastWriteTimeUtcSafe(string path)

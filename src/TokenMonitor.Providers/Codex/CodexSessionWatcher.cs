@@ -2,11 +2,13 @@ namespace TokenMonitor.Providers.Codex;
 
 public sealed class CodexSessionWatcher : IDisposable
 {
+    private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(1);
     private readonly string _sessionsDirectory;
     private readonly TimeSpan _debounce;
     private readonly object _gate = new();
     private FileSystemWatcher? _watcher;
     private Timer? _timer;
+    private Timer? _retryTimer;
     private bool _disposed;
 
     public CodexSessionWatcher(string sessionsDirectory, TimeSpan debounce)
@@ -37,17 +39,29 @@ public sealed class CodexSessionWatcher : IDisposable
     {
         lock (_gate)
         {
-            if (_disposed || _watcher is not null)
+            if (_disposed || _watcher is not null || _retryTimer is not null)
             {
                 return;
             }
 
-            if (!Directory.Exists(_sessionsDirectory))
+            if (!TryStartWatcher())
             {
-                return;
+                ScheduleRetry();
             }
+        }
+    }
 
-            var watcher = new FileSystemWatcher(_sessionsDirectory, "rollout-*.jsonl")
+    private bool TryStartWatcher()
+    {
+        if (!Directory.Exists(_sessionsDirectory))
+        {
+            return false;
+        }
+
+        FileSystemWatcher? watcher = null;
+        try
+        {
+            watcher = new FileSystemWatcher(_sessionsDirectory, "rollout-*.jsonl")
             {
                 IncludeSubdirectories = true,
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
@@ -63,6 +77,56 @@ public sealed class CodexSessionWatcher : IDisposable
             _watcher = watcher;
             _timer = new Timer(OnTimer, null, Timeout.Infinite, Timeout.Infinite);
             IsActive = true;
+            return true;
+        }
+        catch (IOException)
+        {
+            watcher?.Dispose();
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            watcher?.Dispose();
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            watcher?.Dispose();
+            return false;
+        }
+    }
+
+    private void ScheduleRetry()
+    {
+        _retryTimer ??= new Timer(OnRetryTimer, null, RetryInterval, Timeout.InfiniteTimeSpan);
+    }
+
+    private void OnRetryTimer(object? state)
+    {
+        var started = false;
+
+        lock (_gate)
+        {
+            if (_disposed || _watcher is not null)
+            {
+                return;
+            }
+
+            if (TryStartWatcher())
+            {
+                _retryTimer?.Dispose();
+                _retryTimer = null;
+                started = true;
+            }
+            else
+            {
+                _retryTimer?.Change(RetryInterval, Timeout.InfiniteTimeSpan);
+            }
+        }
+
+        if (started)
+        {
+            RaiseChanged();
         }
     }
 
@@ -138,6 +202,8 @@ public sealed class CodexSessionWatcher : IDisposable
 
             _timer?.Dispose();
             _timer = null;
+            _retryTimer?.Dispose();
+            _retryTimer = null;
             IsActive = false;
         }
     }

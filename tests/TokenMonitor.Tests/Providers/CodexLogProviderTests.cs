@@ -52,29 +52,6 @@ public class CodexLogProviderTests
         return result;
     }
 
-    private static int IndexOfSequence(byte[] haystack, byte[] needle)
-    {
-        for (var i = 0; i <= haystack.Length - needle.Length; i++)
-        {
-            var match = true;
-            for (var j = 0; j < needle.Length; j++)
-            {
-                if (haystack[i + j] != needle[j])
-                {
-                    match = false;
-                    break;
-                }
-            }
-
-            if (match)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
     [Fact]
     public async Task GetUsageAsync_ReturnsNotFound_WhenSessionsDirectoryMissing()
     {
@@ -130,7 +107,56 @@ public class CodexLogProviderTests
     }
 
     [Fact]
-    public async Task GetUsageAsync_FindsQualifyingLine_ViaFullReread_WhenOnlyNearStartOfLargeFile()
+    public async Task GetUsageAsync_PrefersNewestEmbeddedTimestamp_OverFileWriteTime()
+    {
+        using var tempDir = new TempDirectory();
+        WriteRolloutFile(tempDir.Path, "rollout-newer-event.jsonl", LineB, DateTime.UtcNow.AddMinutes(-10));
+        WriteRolloutFile(tempDir.Path, "rollout-newer-write.jsonl", LineA, DateTime.UtcNow);
+
+        var provider = new CodexLogProvider(tempDir.Path);
+        var result = await provider.GetUsageAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var fiveHour = Assert.Single(result.Snapshots!, s => s.Window == UsageWindow.FiveHour);
+        Assert.Equal(99.0, fiveHour.UsedPercent);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-15T12:00:00.000Z"), fiveHour.ObservedAt);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_SkipsFilesWrittenBeforeNewestObservedTimestamp()
+    {
+        using var tempDir = new TempDirectory();
+        WriteRolloutFile(tempDir.Path, "rollout-current.jsonl", LineA, new DateTime(2026, 9, 15, 10, 0, 30, DateTimeKind.Utc));
+        WriteRolloutFile(tempDir.Path, "rollout-stale.jsonl", LineB, new DateTime(2026, 9, 15, 9, 0, 0, DateTimeKind.Utc));
+
+        var provider = new CodexLogProvider(tempDir.Path);
+        var result = await provider.GetUsageAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var fiveHour = Assert.Single(result.Snapshots!, s => s.Window == UsageWindow.FiveHour);
+        Assert.Equal(10.0, fiveHour.UsedPercent);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_FindsNewestEmbeddedTimestamp_BeforeLargeOlderTail()
+    {
+        using var tempDir = new TempDirectory();
+        var padding = string.Concat(Enumerable.Repeat(NonQualifyingLine + "\n", 11_000));
+        var content = LineB + "\n" + padding + LineA;
+        Assert.True(Encoding.UTF8.GetByteCount(padding) > 1_048_576);
+        WriteRolloutFile(tempDir.Path, "rollout-out-of-order-large.jsonl", content, DateTime.UtcNow);
+
+        var provider = new CodexLogProvider(tempDir.Path);
+        var result = await provider.GetUsageAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var fiveHour = Assert.Single(result.Snapshots!, s => s.Window == UsageWindow.FiveHour);
+        Assert.Equal(99.0, fiveHour.UsedPercent);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-15T12:00:00.000Z"), fiveHour.ObservedAt);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_FindsQualifyingLine_NearStartOfLargeFile()
     {
         using var tempDir = new TempDirectory();
         var padding = string.Concat(Enumerable.Repeat(NonQualifyingLine + "\n", 10));
@@ -138,7 +164,7 @@ public class CodexLogProviderTests
         Assert.True(content.Length > 256);
         WriteRolloutFile(tempDir.Path, "rollout-large.jsonl", content, DateTime.UtcNow);
 
-        var provider = new CodexLogProvider(tempDir.Path, tailBytes: 256);
+        var provider = new CodexLogProvider(tempDir.Path);
         var result = await provider.GetUsageAsync(CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -147,7 +173,7 @@ public class CodexLogProviderTests
     }
 
     [Fact]
-    public async Task GetUsageAsync_FindsQualifyingLine_InTail_OfLargeFile()
+    public async Task GetUsageAsync_FindsQualifyingLine_NearEndOfLargeFile()
     {
         using var tempDir = new TempDirectory();
         var padding = string.Concat(Enumerable.Repeat(NonQualifyingLine + "\n", 10));
@@ -155,7 +181,7 @@ public class CodexLogProviderTests
         Assert.True(content.Length > 256);
         WriteRolloutFile(tempDir.Path, "rollout-large.jsonl", content, DateTime.UtcNow);
 
-        var provider = new CodexLogProvider(tempDir.Path, tailBytes: 256);
+        var provider = new CodexLogProvider(tempDir.Path);
         var result = await provider.GetUsageAsync(CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -180,7 +206,7 @@ public class CodexLogProviderTests
     }
 
     [Fact]
-    public async Task GetUsageAsync_FindsQualifyingLine_WhenTailBoundarySplitsMultibyteUtf8Character()
+    public async Task GetUsageAsync_FindsQualifyingLine_WithMultibyteUtf8CharacterInContent()
     {
         using var tempDir = new TempDirectory();
 
@@ -189,19 +215,11 @@ public class CodexLogProviderTests
             """{"timestamp":"2026-09-15T09:00:00.000Z","ordinal":0,"type":"session_meta","payload":{"note":"한글"}}""" + "\n");
         var qualifyingBytes = Encoding.UTF8.GetBytes(CompactQualifyingLine);
 
-        var koreanCharBytes = Encoding.UTF8.GetBytes("한");
-        var charStartIndex = IndexOfSequence(multibyteLineBytes, koreanCharBytes);
-        Assert.True(charStartIndex >= 0);
-
-        var cutOffsetWithinLine = charStartIndex + 1;
-        var tailBytes = (multibyteLineBytes.Length - cutOffsetWithinLine) + qualifyingBytes.Length;
-
         var content = Combine(prefix, multibyteLineBytes, qualifyingBytes);
-        Assert.True(content.Length > tailBytes);
 
         WriteRolloutFileBytes(tempDir.Path, "rollout-multibyte.jsonl", content, DateTime.UtcNow);
 
-        var provider = new CodexLogProvider(tempDir.Path, tailBytes: tailBytes);
+        var provider = new CodexLogProvider(tempDir.Path);
         var result = await provider.GetUsageAsync(CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -210,7 +228,7 @@ public class CodexLogProviderTests
     }
 
     [Fact]
-    public async Task GetUsageAsync_FindsQualifyingLine_WhenTailBoundarySplitsCrlfLineEnding()
+    public async Task GetUsageAsync_FindsQualifyingLine_WithCrlfLineEndings()
     {
         using var tempDir = new TempDirectory();
 
@@ -219,14 +237,11 @@ public class CodexLogProviderTests
         var crlfBytes = Encoding.UTF8.GetBytes("\r\n");
         var qualifyingBytes = Encoding.UTF8.GetBytes(CompactQualifyingLine);
 
-        var tailBytes = (crlfBytes.Length - 1) + qualifyingBytes.Length;
-
         var content = Combine(prefix, fillerLineBytes, crlfBytes, qualifyingBytes);
-        Assert.True(content.Length > tailBytes);
 
         WriteRolloutFileBytes(tempDir.Path, "rollout-crlf.jsonl", content, DateTime.UtcNow);
 
-        var provider = new CodexLogProvider(tempDir.Path, tailBytes: tailBytes);
+        var provider = new CodexLogProvider(tempDir.Path);
         var result = await provider.GetUsageAsync(CancellationToken.None);
 
         Assert.True(result.IsSuccess);

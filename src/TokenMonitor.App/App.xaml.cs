@@ -33,6 +33,7 @@ public partial class App : Application
     private DispatcherTimer? _tickTimer;
     private Mutex? _singleInstanceMutex;
     private int _codexRefreshing;
+    private int _codexRefreshPending;
     private Task _claudeRefreshTask = Task.CompletedTask;
     private Task _codexRefreshTask = Task.CompletedTask;
 
@@ -195,29 +196,47 @@ public partial class App : Application
 
     private void OnCodexSessionsChanged(object? sender, EventArgs e)
     {
-        if (!_settings.ShowCodex || _codexPoller is null || Interlocked.CompareExchange(ref _codexRefreshing, 1, 0) != 0)
+        if (!_settings.ShowCodex || _codexPoller is null)
         {
             return;
         }
 
-        _codexRefreshTask = RefreshCodexAsync();
+        Interlocked.Exchange(ref _codexRefreshPending, 1);
+        if (Interlocked.CompareExchange(ref _codexRefreshing, 1, 0) == 0)
+        {
+            _codexRefreshTask = RefreshCodexAsync();
+        }
     }
 
     private async Task RefreshCodexAsync()
     {
-        try
+        while (true)
         {
-            if (_codexPoller is not null)
+            Interlocked.Exchange(ref _codexRefreshPending, 0);
+
+            try
             {
-                await _codexPoller.RefreshAsync().ConfigureAwait(false);
+                if (_codexPoller is not null)
+                {
+                    await _codexPoller.RefreshAsync().ConfigureAwait(false);
+                }
             }
-        }
-        catch (Exception)
-        {
-        }
-        finally
-        {
+            catch (Exception)
+            {
+            }
+
+            if (Volatile.Read(ref _codexRefreshPending) != 0)
+            {
+                continue;
+            }
+
             Interlocked.Exchange(ref _codexRefreshing, 0);
+
+            if (Volatile.Read(ref _codexRefreshPending) == 0 ||
+                Interlocked.CompareExchange(ref _codexRefreshing, 1, 0) != 0)
+            {
+                return;
+            }
         }
     }
 
