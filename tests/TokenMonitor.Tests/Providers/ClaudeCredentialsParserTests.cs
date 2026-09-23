@@ -51,6 +51,23 @@ public class ClaudeCredentialsParserTests
     }
 
     [Fact]
+    public void Parse_ReturnsNull_WhenExpiresAtIsOutOfRange()
+    {
+        var json = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "sk-ant-oat01-FAKE",
+            "expiresAt": 999999999999999
+          }
+        }
+        """;
+
+        var credentials = ClaudeCredentialsParser.Parse(json);
+
+        Assert.Null(credentials);
+    }
+
+    [Fact]
     public void Parse_ReturnsNull_WhenExpiresAtIsString()
     {
         var json = """

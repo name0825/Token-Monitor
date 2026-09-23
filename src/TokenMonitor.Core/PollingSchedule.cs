@@ -43,7 +43,7 @@ public sealed class PollingSchedule
         else if (result.FailureKind == UsageFailureKind.RateLimited)
         {
             var backoff = _currentBackoff is { } previous
-                ? TimeSpanMin(previous + previous, _options.MaximumBackoff)
+                ? (previous >= _options.MaximumBackoff - previous ? _options.MaximumBackoff : previous + previous)
                 : TimeSpanMax(_options.InitialBackoff, EffectiveInterval);
 
             _currentBackoff = backoff;
@@ -66,6 +66,4 @@ public sealed class PollingSchedule
     }
 
     private static TimeSpan TimeSpanMax(TimeSpan a, TimeSpan b) => a >= b ? a : b;
-
-    private static TimeSpan TimeSpanMin(TimeSpan a, TimeSpan b) => a <= b ? a : b;
 }

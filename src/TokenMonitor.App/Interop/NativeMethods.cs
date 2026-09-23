@@ -9,6 +9,7 @@ internal static class NativeMethods
     private const int WS_EX_LAYERED = 0x00080000;
     private const int WS_EX_TRANSPARENT = 0x00000020;
     private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+    private const uint MONITOR_DEFAULTTONULL = 0x00000000;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
@@ -45,6 +46,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW", SetLastError = true)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    [DllImport("user32.dll", EntryPoint = "MonitorFromRect")]
+    private static extern IntPtr MonitorFromRect(ref RECT lprc, uint dwFlags);
 
     public static void ExcludeFromAltTab(IntPtr hwnd)
     {
@@ -97,6 +101,30 @@ internal static class NativeMethods
         top = info.rcWork.Top;
         right = info.rcWork.Right;
         bottom = info.rcWork.Bottom;
+        return true;
+    }
+
+    public static bool TryGetWorkAreaForRect(int left, int top, int right, int bottom, out int workLeft, out int workTop, out int workRight, out int workBottom)
+    {
+        workLeft = workTop = workRight = workBottom = 0;
+
+        RECT rect = new() { Left = left, Top = top, Right = right, Bottom = bottom };
+        IntPtr monitor = MonitorFromRect(ref rect, MONITOR_DEFAULTTONULL);
+        if (monitor == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(monitor, ref info))
+        {
+            return false;
+        }
+
+        workLeft = info.rcWork.Left;
+        workTop = info.rcWork.Top;
+        workRight = info.rcWork.Right;
+        workBottom = info.rcWork.Bottom;
         return true;
     }
 

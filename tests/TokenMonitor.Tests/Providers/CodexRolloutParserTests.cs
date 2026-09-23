@@ -133,6 +133,23 @@ public class CodexRolloutParserTests
     }
 
     [Fact]
+    public void ParseLatest_LeavesResetsAtNull_WhenOutOfRange()
+    {
+        var line = """{"timestamp":"2026-09-15T15:01:09.778Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":50.0,"window_minutes":300,"resets_at":999999999999999},"secondary":{"used_percent":77.0,"window_minutes":10080,"resets_at":1789905762}}}}""";
+
+        var result = CodexRolloutParser.ParseLatest(new[] { line });
+
+        Assert.True(result.IsSuccess);
+        var fiveHour = Assert.Single(result.Snapshots!, s => s.Window == UsageWindow.FiveHour);
+        Assert.Equal(50.0, fiveHour.UsedPercent);
+        Assert.Null(fiveHour.ResetsAt);
+
+        var weekly = Assert.Single(result.Snapshots!, s => s.Window == UsageWindow.Weekly);
+        Assert.Equal(77.0, weekly.UsedPercent);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1789905762), weekly.ResetsAt);
+    }
+
+    [Fact]
     public void ParseLatest_UsesNewestTimestamp_WhenLinesAreOutOfOrder()
     {
         var newerLine = """{"timestamp":"2026-09-15T15:02:00.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":60.0,"window_minutes":300,"resets_at":1789500974}}}}""";

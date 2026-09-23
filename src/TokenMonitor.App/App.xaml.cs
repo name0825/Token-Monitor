@@ -34,8 +34,8 @@ public partial class App : Application
     private Mutex? _singleInstanceMutex;
     private int _codexRefreshing;
     private int _codexRefreshPending;
-    private Task _claudeRefreshTask = Task.CompletedTask;
-    private Task _codexRefreshTask = Task.CompletedTask;
+    private readonly object _refreshTasksLock = new();
+    private readonly HashSet<Task> _refreshTasks = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -136,13 +136,18 @@ public partial class App : Application
             _codexPoller.Updated -= OnPollerUpdated;
         }
 
+        Task[] pendingRefreshes;
+        lock (_refreshTasksLock)
+        {
+            pendingRefreshes = _refreshTasks.ToArray();
+        }
+
         try
         {
             Task.WhenAll(
                 DisposePollerAsync(_claudePoller),
                 DisposePollerAsync(_codexPoller),
-                _claudeRefreshTask,
-                _codexRefreshTask).Wait(ExitTimeout);
+                Task.WhenAll(pendingRefreshes)).Wait(ExitTimeout);
         }
         catch (Exception ex)
         {
@@ -159,6 +164,24 @@ public partial class App : Application
         _singleInstanceMutex = null;
 
         base.OnExit(e);
+    }
+
+    private void TrackRefreshTask(Task task)
+    {
+        lock (_refreshTasksLock)
+        {
+            _refreshTasks.Add(task);
+        }
+
+        task.ContinueWith(
+            completed =>
+            {
+                lock (_refreshTasksLock)
+                {
+                    _refreshTasks.Remove(completed);
+                }
+            },
+            TaskScheduler.Default);
     }
 
     private static Task DisposePollerAsync(UsagePoller? poller)
@@ -204,7 +227,7 @@ public partial class App : Application
         Interlocked.Exchange(ref _codexRefreshPending, 1);
         if (Interlocked.CompareExchange(ref _codexRefreshing, 1, 0) == 0)
         {
-            _codexRefreshTask = RefreshCodexAsync();
+            TrackRefreshTask(RefreshCodexAsync());
         }
     }
 
@@ -448,7 +471,7 @@ public partial class App : Application
     {
         if (_settings.ShowClaude)
         {
-            _claudeRefreshTask = RefreshPollerAsync(_claudePoller);
+            TrackRefreshTask(RefreshPollerAsync(_claudePoller));
         }
 
         if (_settings.ShowCodex)

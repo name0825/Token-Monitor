@@ -158,7 +158,8 @@ public static class CodexRolloutParser
         var usedPercent = usedPercentElement.GetDouble();
 
         DateTimeOffset? resetsAt = null;
-        if (windowElement.TryGetProperty("resets_at", out var resetsAtElement) && resetsAtElement.ValueKind == JsonValueKind.Number && resetsAtElement.TryGetInt64(out var resetsAtSeconds))
+        if (windowElement.TryGetProperty("resets_at", out var resetsAtElement) && resetsAtElement.ValueKind == JsonValueKind.Number && resetsAtElement.TryGetInt64(out var resetsAtSeconds)
+            && resetsAtSeconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds() && resetsAtSeconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds())
         {
             resetsAt = DateTimeOffset.FromUnixTimeSeconds(resetsAtSeconds);
         }

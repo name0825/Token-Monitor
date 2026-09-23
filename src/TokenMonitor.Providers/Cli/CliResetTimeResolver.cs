@@ -14,7 +14,7 @@ internal static class CliResetTimeResolver
             if (month is int m && day is int d)
             {
                 candidate = new DateTime(nowLocal.Year, m, d, hour, minute, 0);
-                if (candidate.Date < nowLocal.Date)
+                if (candidate <= nowLocal.DateTime)
                 {
                     candidate = candidate.AddYears(1);
                 }

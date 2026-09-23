@@ -135,6 +135,27 @@ public class PollingScheduleTests
     }
 
     [Fact]
+    public void Next_DoesNotOverflow_WhenMaximumBackoffIsTimeSpanMaxValue()
+    {
+        var options = new PollingOptions
+        {
+            Interval = TimeSpan.FromSeconds(1),
+            MinimumInterval = TimeSpan.FromSeconds(1),
+            InitialBackoff = TimeSpan.FromSeconds(1),
+            MaximumBackoff = TimeSpan.MaxValue,
+        };
+        var schedule = new PollingSchedule(options);
+        var rateLimited = UsageResult.Failure(UsageFailureKind.RateLimited, "429");
+
+        for (var i = 0; i < 100; i++)
+        {
+            schedule.Next(rateLimited);
+        }
+
+        Assert.Equal(TimeSpan.MaxValue, schedule.CurrentDelay);
+    }
+
+    [Fact]
     public void Constructor_Throws_WhenMaximumBackoffLessThanInitialBackoff()
     {
         var options = new PollingOptions { InitialBackoff = TimeSpan.FromMinutes(5), MaximumBackoff = TimeSpan.FromMinutes(1) };

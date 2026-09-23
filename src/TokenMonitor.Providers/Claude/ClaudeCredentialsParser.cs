@@ -40,6 +40,11 @@ public static class ClaudeCredentialsParser
                 return null;
             }
 
+            if (expiresAtMs < DateTimeOffset.MinValue.ToUnixTimeMilliseconds() || expiresAtMs > DateTimeOffset.MaxValue.ToUnixTimeMilliseconds())
+            {
+                return null;
+            }
+
             return new ClaudeCredentials(tokenElement.GetString()!, DateTimeOffset.FromUnixTimeMilliseconds(expiresAtMs));
         }
     }

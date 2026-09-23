@@ -114,14 +114,46 @@ public partial class OverlayWindow : Window
     {
         if (_handle != IntPtr.Zero
             && NativeMethods.TryGetWorkAreaForWindow(_handle, out int left, out int top, out int right, out int bottom)
-            && PresentationSource.FromVisual(this)?.CompositionTarget is { } target)
+            && TryConvertDeviceRectToDip(left, top, right, bottom, out Rect workArea))
         {
-            Point topLeft = target.TransformFromDevice.Transform(new Point(left, top));
-            Point bottomRight = target.TransformFromDevice.Transform(new Point(right, bottom));
-            return new Rect(topLeft, bottomRight);
+            return workArea;
         }
 
         return SystemParameters.WorkArea;
+    }
+
+    private bool TryGetMonitorWorkArea(Rect dipRect, out Rect workAreaDip)
+    {
+        workAreaDip = default;
+
+        if (PresentationSource.FromVisual(this)?.CompositionTarget is not { } target)
+        {
+            return false;
+        }
+
+        Point topLeft = target.TransformToDevice.Transform(dipRect.TopLeft);
+        Point bottomRight = target.TransformToDevice.Transform(dipRect.BottomRight);
+
+        return NativeMethods.TryGetWorkAreaForRect(
+                (int)Math.Round(topLeft.X), (int)Math.Round(topLeft.Y),
+                (int)Math.Round(bottomRight.X), (int)Math.Round(bottomRight.Y),
+                out int left, out int top, out int right, out int bottom)
+            && TryConvertDeviceRectToDip(left, top, right, bottom, out workAreaDip);
+    }
+
+    private bool TryConvertDeviceRectToDip(int left, int top, int right, int bottom, out Rect dipRect)
+    {
+        dipRect = default;
+
+        if (PresentationSource.FromVisual(this)?.CompositionTarget is not { } target)
+        {
+            return false;
+        }
+
+        Point topLeft = target.TransformFromDevice.Transform(new Point(left, top));
+        Point bottomRight = target.TransformFromDevice.Transform(new Point(right, bottom));
+        dipRect = new Rect(topLeft, bottomRight);
+        return true;
     }
 
     private void OnPositionSaveTick(object? sender, EventArgs e)
@@ -144,18 +176,10 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        double virtualLeft = SystemParameters.VirtualScreenLeft;
-        double virtualTop = SystemParameters.VirtualScreenTop;
-        double virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
-        double virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
-
-        bool onScreen = left + width > virtualLeft && left < virtualRight
-            && top + height > virtualTop && top < virtualBottom;
-
-        if (onScreen)
+        if (TryGetMonitorWorkArea(new Rect(left, top, width, height), out Rect monitorWork))
         {
-            Left = Clamp(left, virtualLeft, virtualRight - width);
-            Top = Clamp(top, virtualTop, virtualBottom - height);
+            Left = Clamp(left, monitorWork.Left, monitorWork.Right - width);
+            Top = Clamp(top, monitorWork.Top, monitorWork.Bottom - height);
             _placed = true;
             return;
         }

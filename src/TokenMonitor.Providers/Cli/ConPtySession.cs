@@ -7,7 +7,7 @@ namespace TokenMonitor.Providers.Cli;
 
 public sealed class ConPtySession : IAsyncDisposable
 {
-    private readonly IntPtr _pseudoConsole;
+    private IntPtr _pseudoConsole;
     private readonly IntPtr _attributeList;
     private readonly IntPtr _jobHandle;
     private readonly IntPtr _processHandle;
@@ -50,6 +50,8 @@ public sealed class ConPtySession : IAsyncDisposable
 
         if (!ConPtyNativeMethods.CreatePipe(out var outputReadSide, out var outputWriteSide, IntPtr.Zero, 0))
         {
+            inputReadSide.Dispose();
+            inputWriteSide.Dispose();
             ThrowLastWin32Error("Failed to create output pipe.");
         }
 
@@ -304,24 +306,42 @@ public sealed class ConPtySession : IAsyncDisposable
 
         Kill();
 
+        // The output pipe is a synchronous anonymous pipe, so cancelling the pump can't interrupt a blocked
+        // ReadFile; the write side stays open in conhost until ClosePseudoConsole, so we must close it first
+        // (off-thread, since it blocks) while the pump keeps draining, then bound how long we wait for both.
+        if (_pseudoConsole != IntPtr.Zero)
+        {
+            var pseudoConsole = _pseudoConsole;
+            _pseudoConsole = IntPtr.Zero;
+            try
+            {
+                await Task.Run(() => ConPtyNativeMethods.ClosePseudoConsole(pseudoConsole))
+                    .WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // ClosePseudoConsole did not return in time; continue cleanup without blocking further.
+            }
+        }
+
         _pumpCts.Cancel();
         try
         {
-            await _pumpTask.ConfigureAwait(false);
+            await _pumpTask.WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
         }
         catch
         {
-            // Ignore pump shutdown errors.
+            // Ignore pump shutdown errors and timeouts.
         }
 
         _pumpCts.Dispose();
 
         _inputWriter.Dispose();
-        _outputReader.Dispose();
-
-        if (_pseudoConsole != IntPtr.Zero)
+        if (_pumpTask.IsCompleted)
         {
-            ConPtyNativeMethods.ClosePseudoConsole(_pseudoConsole);
+            // Only dispose if the pump has actually returned; otherwise it may still be blocked in a
+            // synchronous ReadFile on this stream, and disposing from another thread risks handle reuse.
+            _outputReader.Dispose();
         }
 
         if (_attributeList != IntPtr.Zero)
