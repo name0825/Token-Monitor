@@ -39,7 +39,25 @@ public class CliScrapeProviderTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(UsageFailureKind.Unavailable, result.FailureKind);
-        Assert.Contains("CLI 폴백 설정 필요", result.Message);
+        Assert.StartsWith("claude 폴더 신뢰 필요", result.Message);
+        Assert.Contains(tempDirectory.Path, result.Message);
+        Assert.Empty(session.Writes);
+        Assert.True(session.Disposed);
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_ReportsUpdateRequired_WithoutSendingKeys_WhenUpdatePromptDetected()
+    {
+        using var tempDirectory = new TempDirectory();
+        var session = new FakeCliSession(ReadCodexFixture(), string.Empty);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var provider = new CliScrapeProvider(Tool.Codex, tempDirectory.Path, (_, _) => session, timeProvider);
+
+        var result = await provider.GetUsageAsync(CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(UsageFailureKind.Unavailable, result.FailureKind);
+        Assert.StartsWith("codex 업데이트 필요", result.Message);
         Assert.Empty(session.Writes);
         Assert.True(session.Disposed);
     }

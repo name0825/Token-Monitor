@@ -72,6 +72,14 @@ public sealed class CliScrapeProvider : IUsageProvider
         }
     }
 
+    private string DescribePromptIssue(string promptIssue, string executable) => promptIssue switch
+    {
+        "update prompt" => $"{executable} 업데이트 필요 — 터미널에서 {executable}를 실행해 업데이트하세요",
+        "login prompt" => $"{executable} 로그인 필요 — 터미널에서 {executable}를 실행해 로그인하세요",
+        "trust prompt" => $"{executable} 폴더 신뢰 필요 — {_workingDirectory}에서 {executable}를 실행해 승인하세요",
+        _ => $"CLI 폴백 설정 필요: {promptIssue}",
+    };
+
     private async Task<UsageResult> RunAsync(CancellationToken cancellationToken)
     {
         try
@@ -114,7 +122,7 @@ public sealed class CliScrapeProvider : IUsageProvider
             var promptIssue = CliPromptDetector.Detect(startupScreen);
             if (promptIssue is not null)
             {
-                return UsageResult.Failure(UsageFailureKind.Unavailable, $"CLI 폴백 설정 필요: {promptIssue}");
+                return UsageResult.Failure(UsageFailureKind.Unavailable, DescribePromptIssue(promptIssue, executable));
             }
 
             await session.WriteAsync(usageCommand, timeoutCts.Token).ConfigureAwait(false);
