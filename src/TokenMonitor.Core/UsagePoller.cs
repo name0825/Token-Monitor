@@ -54,7 +54,9 @@ public sealed class UsagePoller : IAsyncDisposable
             _running = true;
             _generation++;
             _runCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
-            _loopTask = RunLoopAsync(_generation, _runCts.Token);
+            long generation = _generation;
+            CancellationToken cancellationToken = _runCts.Token;
+            _loopTask = Task.Run(() => RunLoopAsync(generation, cancellationToken));
         }
     }
 

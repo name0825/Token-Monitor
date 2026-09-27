@@ -129,8 +129,8 @@ public sealed class ToolUsageViewModel : INotifyPropertyChanged
     {
         if (result.IsSuccess && result.Snapshots is { Count: > 0 } snapshots)
         {
-            HasError = false;
-            ErrorText = string.Empty;
+            HasError = !string.IsNullOrEmpty(result.FallbackWarning);
+            ErrorText = HasError ? $"CLI 폴백 실패: {result.FallbackWarning}" : string.Empty;
 
             foreach (UsageSnapshot snapshot in snapshots)
             {

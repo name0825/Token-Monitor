@@ -105,6 +105,29 @@ public class ToolUsageViewModelTests
     }
 
     [Fact]
+    public void Apply_StaleLogWithCliFailure_ShowsWarningAndClearsOnRecovery()
+    {
+        var vm = new ToolUsageViewModel(Tool.Codex);
+        var now = DateTimeOffset.UtcNow;
+        var logObservedAt = now.AddMinutes(-20);
+        var staleLog = Snapshot(Tool.Codex, UsageWindow.FiveHour, 42, now.AddHours(1), logObservedAt, UsageOrigin.Log);
+
+        vm.Apply(UsageResult.Success([staleLog], "throttled"), now);
+
+        Assert.Equal(42, vm.FiveHourPercent);
+        Assert.Contains(UsageFormatting.FormatOrigin(UsageOrigin.Log), vm.StatusText);
+        Assert.True(vm.HasError);
+        Assert.Equal("CLI 폴백 실패: throttled", vm.ErrorText);
+
+        var cli = Snapshot(Tool.Codex, UsageWindow.FiveHour, 54, now.AddHours(1), now, UsageOrigin.Cli);
+        vm.Apply(UsageResult.Success([cli]), now);
+
+        Assert.Equal(54, vm.FiveHourPercent);
+        Assert.False(vm.HasError);
+        Assert.Empty(vm.ErrorText);
+    }
+
+    [Fact]
     public void Render_ClampsToZero_WhenResetsAtAlreadyPassed()
     {
         var vm = new ToolUsageViewModel(Tool.Claude);

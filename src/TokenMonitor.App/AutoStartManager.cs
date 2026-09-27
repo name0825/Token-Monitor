@@ -14,12 +14,19 @@ public static class AutoStartManager
         try
         {
             using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-            return key?.GetValue(ValueName) is string value && value.Length > 0;
+            return key?.GetValue(ValueName) is string value && MatchesCurrentProcess(value);
         }
         catch (Exception e) when (e is SecurityException or UnauthorizedAccessException or IOException)
         {
             return false;
         }
+    }
+
+    private static bool MatchesCurrentProcess(string value)
+    {
+        string? processPath = Environment.ProcessPath;
+        return processPath is not null
+            && string.Equals(value, "\"" + processPath + "\"", StringComparison.OrdinalIgnoreCase);
     }
 
     public static void SetEnabled(bool enabled)
@@ -29,7 +36,11 @@ public static class AutoStartManager
             using RegistryKey key = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
             if (!enabled)
             {
-                key.DeleteValue(ValueName, throwOnMissingValue: false);
+                if (key.GetValue(ValueName) is string value && MatchesCurrentProcess(value))
+                {
+                    key.DeleteValue(ValueName, throwOnMissingValue: false);
+                }
+
                 return;
             }
 

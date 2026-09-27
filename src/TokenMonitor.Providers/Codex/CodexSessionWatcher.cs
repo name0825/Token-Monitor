@@ -72,26 +72,28 @@ public sealed class CodexSessionWatcher : IDisposable
             watcher.Renamed += OnFileSystemEvent;
             watcher.Error += OnError;
 
-            watcher.EnableRaisingEvents = true;
-
             _watcher = watcher;
-            _timer = new Timer(OnTimer, null, Timeout.Infinite, Timeout.Infinite);
+            _timer ??= new Timer(OnTimer, null, Timeout.Infinite, Timeout.Infinite);
+            watcher.EnableRaisingEvents = true;
             IsActive = true;
             return true;
         }
         catch (IOException)
         {
             watcher?.Dispose();
+            _watcher = null;
             return false;
         }
         catch (UnauthorizedAccessException)
         {
             watcher?.Dispose();
+            _watcher = null;
             return false;
         }
         catch (ArgumentException)
         {
             watcher?.Dispose();
+            _watcher = null;
             return false;
         }
     }
@@ -135,8 +137,39 @@ public sealed class CodexSessionWatcher : IDisposable
         ScheduleRaise();
     }
 
-    private void OnError(object sender, ErrorEventArgs e)
+    internal FileSystemWatcher? CurrentWatcher
     {
+        get
+        {
+            lock (_gate)
+            {
+                return _watcher;
+            }
+        }
+    }
+
+    internal void OnError(object sender, ErrorEventArgs e)
+    {
+        lock (_gate)
+        {
+            if (_disposed || !ReferenceEquals(sender, _watcher))
+            {
+                return;
+            }
+
+            if (e.GetException() is not InternalBufferOverflowException)
+            {
+                _watcher.Created -= OnFileSystemEvent;
+                _watcher.Changed -= OnFileSystemEvent;
+                _watcher.Renamed -= OnFileSystemEvent;
+                _watcher.Error -= OnError;
+                _watcher.Dispose();
+                _watcher = null;
+                IsActive = false;
+                ScheduleRetry();
+            }
+        }
+
         ScheduleRaise();
     }
 

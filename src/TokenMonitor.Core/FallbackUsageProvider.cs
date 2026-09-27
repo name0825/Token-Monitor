@@ -55,7 +55,7 @@ public sealed class FallbackUsageProvider : IUsageProvider
         var staleFallbackResult = await GetResultAsync(_fallback, cancellationToken).ConfigureAwait(false);
         if (!staleFallbackResult.IsSuccess)
         {
-            return primaryResult;
+            return UsageResult.Success(primaryResult.Snapshots!, staleFallbackResult.Message);
         }
 
         DateTimeOffset? primaryNewest = NewestObservedAt(primaryResult);

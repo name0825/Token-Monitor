@@ -86,6 +86,11 @@ public partial class OverlayWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        if (_positionSaveTimer.IsEnabled)
+        {
+            OnPositionSaveTick(this, EventArgs.Empty);
+        }
+
         _positionSaveTimer.Stop();
         _positionSaveTimer.Tick -= OnPositionSaveTick;
         base.OnClosed(e);

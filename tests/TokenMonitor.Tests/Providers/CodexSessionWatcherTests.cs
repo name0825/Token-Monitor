@@ -43,6 +43,52 @@ public class CodexSessionWatcherTests
     }
 
     [Fact]
+    public async Task Error_RecreatesWatcher_AndRaisesChangedForNewFiles()
+    {
+        using var tempDir = new TempDirectory();
+        using var watcher = new CodexSessionWatcher(tempDir.Path, TimeSpan.FromMilliseconds(50));
+        watcher.Start();
+
+        var original = watcher.CurrentWatcher!;
+        var restarted = new TaskCompletionSource();
+        watcher.Changed += (_, _) =>
+        {
+            if (watcher.IsActive && !ReferenceEquals(original, watcher.CurrentWatcher))
+            {
+                restarted.TrySetResult();
+            }
+        };
+
+        watcher.OnError(original, new ErrorEventArgs(new IOException("Watcher invalidated")));
+        Assert.False(watcher.IsActive);
+
+        var completed = await Task.WhenAny(restarted.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        Assert.Same(restarted.Task, completed);
+
+        var fileChanged = new TaskCompletionSource();
+        watcher.Changed += (_, _) => fileChanged.TrySetResult();
+        File.WriteAllText(Path.Combine(tempDir.Path, "rollout-after-restart.jsonl"), "{}");
+
+        completed = await Task.WhenAny(fileChanged.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        Assert.Same(fileChanged.Task, completed);
+    }
+
+    [Fact]
+    public void Error_BufferOverflow_KeepsWatcher()
+    {
+        using var tempDir = new TempDirectory();
+        using var watcher = new CodexSessionWatcher(tempDir.Path, TimeSpan.FromMilliseconds(50));
+        watcher.Start();
+
+        var original = watcher.CurrentWatcher!;
+
+        watcher.OnError(original, new ErrorEventArgs(new InternalBufferOverflowException()));
+
+        Assert.True(watcher.IsActive);
+        Assert.Same(original, watcher.CurrentWatcher);
+    }
+
+    [Fact]
     public async Task Start_DoesNotRaiseChanged_ForNonMatchingFile()
     {
         using var tempDir = new TempDirectory();

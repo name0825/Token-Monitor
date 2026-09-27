@@ -33,6 +33,32 @@ public class UsagePollerTests
     }
 
     [Fact]
+    public async Task Start_ReturnsBeforeSynchronousProviderWorkCompletes()
+    {
+        using var providerStarted = new ManualResetEventSlim();
+        using var releaseProvider = new ManualResetEventSlim();
+        var provider = new FakeUsageProvider(Tool.Codex, ct =>
+        {
+            providerStarted.Set();
+            releaseProvider.Wait(TimeSpan.FromSeconds(5));
+            return Task.FromResult(SuccessResult());
+        });
+        await using var poller = new UsagePoller(provider, LongInterval());
+
+        Task startTask = Task.Run(() => poller.Start());
+        try
+        {
+            Assert.True(providerStarted.Wait(TimeSpan.FromSeconds(5)));
+            await startTask.WaitAsync(TimeSpan.FromSeconds(1));
+        }
+        finally
+        {
+            releaseProvider.Set();
+            await startTask;
+        }
+    }
+
+    [Fact]
     public void Start_IsIdempotent_WhenCalledTwice()
     {
         var provider = new FakeUsageProvider(Tool.Claude, ct => Task.FromResult(SuccessResult()));

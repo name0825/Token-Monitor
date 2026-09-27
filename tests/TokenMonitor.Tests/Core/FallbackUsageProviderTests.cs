@@ -21,6 +21,7 @@ public class FallbackUsageProviderStalenessTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(UsageOrigin.Log, result.Snapshots![0].Origin);
+        Assert.Null(result.FallbackWarning);
     }
 
     [Fact]
@@ -51,6 +52,7 @@ public class FallbackUsageProviderStalenessTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(UsageOrigin.Log, result.Snapshots![0].Origin);
+        Assert.Equal("throttled", result.FallbackWarning);
     }
 
     [Fact]
