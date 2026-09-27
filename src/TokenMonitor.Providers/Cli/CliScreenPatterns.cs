@@ -16,7 +16,7 @@ internal static partial class CliScreenPatterns
     public static partial Regex ClaudeResetValue();
 
     [GeneratedRegex(
-        @"(?<label>5h limit|Weekly limit):.*?(?<percent>\d{1,3})%\s+left\s*\(resets\s+(?<hour>\d{1,2}):(?<minute>\d{2})(?:\s+on\s+(?<day>\d{1,2})\s+(?<month>[A-Za-z]{3}))?\)",
+        @"(?<label>5h limit|Weekly limit):[^\r\n]*?(?<percent>\d{1,3})%[ \t]+left[ \t│]*(?:\r?\n[ \t│]*)?\(resets[ \t]+(?<hour>\d{1,2}):(?<minute>\d{2})(?:[ \t]+(?<ampm>am|pm))?(?:[ \t]+on[ \t]+(?<day>\d{1,2})[ \t]+(?<month>[A-Za-z]{3}))?\)",
         RegexOptions.IgnoreCase)]
     public static partial Regex CodexLimitLine();
 

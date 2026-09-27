@@ -23,6 +23,16 @@ public static class CodexStatusScreenParser
                 continue;
             }
 
+            if (match.Groups["ampm"].Success)
+            {
+                if (hour is < 1 or > 12)
+                {
+                    continue;
+                }
+
+                hour = hour % 12 + (match.Groups["ampm"].Value.Equals("pm", StringComparison.OrdinalIgnoreCase) ? 12 : 0);
+            }
+
             var window = match.Groups["label"].Value.Equals("5h limit", StringComparison.OrdinalIgnoreCase)
                 ? UsageWindow.FiveHour
                 : UsageWindow.Weekly;
