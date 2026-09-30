@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using TokenMonitor.Core;
 
 namespace TokenMonitor.Providers.Cli;
@@ -10,6 +11,13 @@ public sealed class CliScrapeProvider : IUsageProvider
     private static readonly TimeSpan RetryAfterFailureInterval = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan HardTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan QuietPeriod = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan ParseRetryInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan ParseRetryWindow = TimeSpan.FromSeconds(5);
+    private const int HintMaxLength = 80;
+
+    private static readonly Regex HintPattern = new(
+        @"error|failed|failure|unable|couldn't|could not|rate.?limit|loading|timed out|try again",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private readonly Tool _tool;
     private readonly string _workingDirectory;
@@ -131,11 +139,27 @@ public sealed class CliScrapeProvider : IUsageProvider
             await session.WaitForIdleAsync(QuietPeriod, HardTimeout, timeoutCts.Token).ConfigureAwait(false);
 
             var screen = session.RenderScreen();
-            var observedAt = _timeProvider.GetUtcNow();
+            var result = ParseScreen(screen);
+            if (result.IsSuccess)
+            {
+                return result;
+            }
 
-            return _tool == Tool.Claude
-                ? ClaudeUsageScreenParser.Parse(screen, observedAt)
-                : CodexStatusScreenParser.Parse(screen, observedAt);
+            var retryDeadline = _timeProvider.GetUtcNow() + ParseRetryWindow;
+            try
+            {
+                while (!result.IsSuccess && _timeProvider.GetUtcNow() < retryDeadline)
+                {
+                    await Task.Delay(ParseRetryInterval, _timeProvider, timeoutCts.Token).ConfigureAwait(false);
+                    screen = session.RenderScreen();
+                    result = ParseScreen(screen);
+                }
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+            }
+
+            return result.IsSuccess ? result : AppendScreenHint(result, screen);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -145,6 +169,35 @@ public sealed class CliScrapeProvider : IUsageProvider
         {
             await session.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    private UsageResult ParseScreen(string screen)
+    {
+        var observedAt = _timeProvider.GetUtcNow();
+        return _tool == Tool.Claude
+            ? ClaudeUsageScreenParser.Parse(screen, observedAt)
+            : CodexStatusScreenParser.Parse(screen, observedAt);
+    }
+
+    private static UsageResult AppendScreenHint(UsageResult failure, string screen)
+    {
+        foreach (var rawLine in screen.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || !HintPattern.IsMatch(line))
+            {
+                continue;
+            }
+
+            if (line.Length > HintMaxLength)
+            {
+                line = line[..HintMaxLength] + "…";
+            }
+
+            return UsageResult.Failure(failure.FailureKind!.Value, $"{failure.Message} — 화면: \"{line}\"", failure.FallbackMessage);
+        }
+
+        return failure;
     }
 
     private static ICliSession CreateDefaultSession(string executable, string workingDirectory) =>

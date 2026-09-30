@@ -53,6 +53,11 @@ public sealed class ClaudeOAuthProvider : IUsageProvider
             return UsageResult.Failure(UsageFailureKind.InvalidData, "Failed to parse credentials file");
         }
 
+        if (string.IsNullOrWhiteSpace(credentials.AccessToken))
+        {
+            return UsageResult.Failure(UsageFailureKind.NotFound, "Credentials file has no access token");
+        }
+
         var now = _timeProvider.GetUtcNow();
         if (credentials.ExpiresAt <= now)
         {

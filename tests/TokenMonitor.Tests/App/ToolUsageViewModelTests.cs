@@ -78,6 +78,18 @@ public class ToolUsageViewModelTests
         Assert.Equal("—", vm.FiveHourText);
     }
 
+    [Theory]
+    [InlineData(Tool.Claude, "자격 증명 없음")]
+    [InlineData(Tool.Codex, "설정 없음")]
+    public void Apply_NotFound_ShowsToolSpecificText(Tool tool, string expected)
+    {
+        var vm = new ToolUsageViewModel(tool);
+
+        vm.Apply(UsageResult.Failure(UsageFailureKind.NotFound, "missing"), DateTimeOffset.UtcNow);
+
+        Assert.Equal(expected, vm.ErrorText);
+    }
+
     [Fact]
     public void Apply_Failure_SetsHasErrorAndErrorText()
     {

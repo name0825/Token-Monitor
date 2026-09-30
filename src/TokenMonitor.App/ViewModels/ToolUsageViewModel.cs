@@ -214,11 +214,11 @@ public sealed class ToolUsageViewModel : INotifyPropertyChanged
         reset = UsageFormatting.FormatRemaining(current.ResetsAt, now);
     }
 
-    private static string DescribeFailure(UsageResult result)
+    private string DescribeFailure(UsageResult result)
     {
         string baseText = result.FailureKind switch
         {
-            UsageFailureKind.NotFound => "설정 없음",
+            UsageFailureKind.NotFound => _tool == Tool.Claude ? "자격 증명 없음" : "설정 없음",
             UsageFailureKind.NoData => "데이터 없음",
             UsageFailureKind.Unauthorized => "인증 만료",
             UsageFailureKind.RateLimited => "요청 제한",

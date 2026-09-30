@@ -55,6 +55,25 @@ public class ClaudeOAuthProviderTests
         Assert.Equal("oauth-2025-04-20", Assert.Single(betaValues));
     }
 
+    [Fact]
+    public async Task GetUsageAsync_ReturnsNotFound_WhenAccessTokenEmpty_WithoutRequest()
+    {
+        using var tempDir = new TempDirectory();
+        var now = DateTimeOffset.Parse("2026-09-16T00:00:00+00:00");
+        var credentialsPath = WriteCredentialsFile(tempDir.Path, DateTimeOffset.FromUnixTimeMilliseconds(0), accessToken: "");
+
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
+        using var httpClient = new HttpClient(handler);
+
+        var provider = new ClaudeOAuthProvider(httpClient, credentialsPath, new FakeTimeProvider(now));
+        var result = await provider.GetUsageAsync(CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(UsageFailureKind.NotFound, result.FailureKind);
+        Assert.Empty(handler.Requests);
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, UsageFailureKind.Unauthorized)]
     [InlineData(HttpStatusCode.Forbidden, UsageFailureKind.Unauthorized)]
